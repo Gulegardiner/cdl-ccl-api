@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 // 导入node.js的crypto库生成uuid
 const crypto = require("crypto");
 // 导入fs处理文件路径
-fs = require("fs");
+const fs = require("fs");
 
 // 上传头像
 exports.uploadAvatar = (req, res) => {
@@ -246,7 +246,8 @@ exports.getUserList = (req, res) => {
     } else {
       let total = result.length;
       const offset = (page - 1) * limit;
-      sql += ` LIMIT ${limit} OFFSET ${offset}`;
+      sql += ` LIMIT ? OFFSET ?`;
+      queryValues.push(limit, offset);
 
       db.query(sql, queryValues, (err, result) => {
         if (err) {

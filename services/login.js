@@ -24,6 +24,7 @@ exports.register = (req, res) => {
   // 第二步,判断前端传过来账号有没有已经存在在数据表中：
   const sql = "select * from users where account = ?";
   db.query(sql, reginfo.account, (err, results) => {
+    if (err) return res.cc(err);
     if (results.length > 0) {
       return res.send({
         status: 500,

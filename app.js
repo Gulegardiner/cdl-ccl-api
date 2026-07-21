@@ -54,17 +54,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// 对不符合joi验证规则的数据进行报错拦截
-const Joi = require("joi");
-app.use((err, req, res, next) => {
-  if (err instanceof Joi.ValidationError) {
-    res.send({
-      status: 500,
-      message: "输入的数据不符合验证规则",
-    });
-  }
-});
-
 const jwtconfig = require("./jwt_config/index.js");
 const { expressjwt: jwt } = require("express-jwt");
 // 排除不需要携带token的接口
@@ -105,12 +94,24 @@ app.use(function (req, res, next) {
   next(createError(404));
 });
 
+// 对不符合joi验证规则的数据进行报错拦截
+const Joi = require("joi");
+
 // error handler
 app.use(function (err, req, res, next) {
+  // JWT 认证失败
   if (err.name === "UnauthorizedError") {
     return res.send({
       status: 401,
       message: "登录过期，请重新登录",
+    });
+  }
+
+  // Joi 验证失败
+  if (err instanceof Joi.ValidationError) {
+    return res.send({
+      status: 400,
+      message: "输入的数据不符合验证规则",
     });
   }
 

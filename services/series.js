@@ -34,7 +34,8 @@ exports.getSeriesList = (req, res) => {
     // 分页
     if (page && limit) {
       const offset = (page - 1) * limit;
-      sql += ` LIMIT ${limit} OFFSET ${offset}`;
+      sql += ` LIMIT ? OFFSET ?`;
+      queryValues.push(limit, offset);
     }
 
     db.query(sql, queryValues, (err, result) => {

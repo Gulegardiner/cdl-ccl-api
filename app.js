@@ -92,6 +92,14 @@ app.use("/app-api/user", loginRouter);
 const userRouter = require("./routes/app-api/user/userinfo");
 app.use("/app-api/user", userRouter);
 
+// 卡池路由
+const bookRouter = require("./routes/app-api/book/book");
+app.use("/app-api/book", bookRouter);
+
+// 卡池分组路由
+const seriesRouter = require("./routes/app-api/series/series");
+app.use("/app-api/series", seriesRouter);
+
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
   next(createError(404));

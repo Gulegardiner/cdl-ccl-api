@@ -50,4 +50,39 @@ CREATE TABLE `systeminfo`  (
 -- 初始化系统信息默认数据
 INSERT INTO `systeminfo` VALUES (1, 'rgba(18, 170, 220, 1)');
 
+-- ----------------------------
+-- 卡池信息表
+-- ----------------------------
+DROP TABLE IF EXISTS `books`;
+CREATE TABLE `books` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `book_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '卡池唯一标识ID',
+  `name` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '卡池名称',
+  `theme` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '主题',
+  `description` text CHARACTER SET utf8 COLLATE utf8_general_ci NULL COMMENT '卡池描述',
+  `cover_color` varchar(500) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '封面渐变色',
+  `cover_image_url` varchar(500) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '封面图片URL',
+  `created_at` bigint(20) NULL DEFAULT NULL COMMENT '创建时间戳',
+  `updated_at` bigint(20) NULL DEFAULT NULL COMMENT '更新时间戳',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_book_id` (`book_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic COMMENT = '卡池信息表';
+
+-- ----------------------------
+-- 卡池分组表
+-- ----------------------------
+DROP TABLE IF EXISTS `series`;
+CREATE TABLE `series` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `series_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '分组唯一标识ID',
+  `book_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '所属卡池ID',
+  `name` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '分组名称',
+  `description` varchar(500) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '分组描述',
+  `created_at` bigint(20) NULL DEFAULT NULL COMMENT '创建时间戳',
+  `updated_at` bigint(20) NULL DEFAULT NULL COMMENT '更新时间戳',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_series_id` (`series_id`) USING BTREE,
+  KEY `idx_book_id` (`book_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic COMMENT = '卡池分组表';
+
 SET FOREIGN_KEY_CHECKS = 1;

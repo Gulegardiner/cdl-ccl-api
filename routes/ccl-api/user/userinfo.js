@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const expressJoi = require("@escook/express-joi");
-const userinfoHandler = require("../../../services/userinfo");
+const userinfoHandler = require("../../../services/userinfo.js");
 // 导入验证规则
 const {
   updateUserInfo_limit,

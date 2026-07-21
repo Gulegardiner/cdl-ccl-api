@@ -64,30 +64,34 @@ app.use(
   }).unless({
     path: [
       // 登录注册接口无需 token
-      /^\/app-api\/user\/login/,
-      /^\/app-api\/user\/register/,
-      /^\/app-api\/user\/getSystemInfo/,
-      /^\/app-api\/user\/getUserInfo/,
-      /^\/app-api\/user\/getKaptcha/,
-      /^\/app-api\/user\/checkKaptcha/,
+      /^\/ccl-api\/user\/login/,
+      /^\/ccl-api\/user\/register/,
+      /^\/ccl-api\/user\/getSystemInfo/,
+      /^\/ccl-api\/user\/getUserInfo/,
+      /^\/ccl-api\/user\/getKaptcha/,
+      /^\/ccl-api\/user\/checkKaptcha/,
+      /^\/ccl-api\/book\/getBookList/,
+      /^\/ccl-api\/series\/getSeriesList/,
+
+
     ],
   })
 );
 
 // 挂载路由
-const loginRouter = require("./routes/app-api/user/login");
-app.use("/app-api/user", loginRouter);
+const loginRouter = require("./routes/ccl-api/user/login");
+app.use("/ccl-api/user", loginRouter);
 
-const userRouter = require("./routes/app-api/user/userinfo");
-app.use("/app-api/user", userRouter);
+const userRouter = require("./routes/ccl-api/user/userinfo");
+app.use("/ccl-api/user", userRouter);
 
 // 卡池路由
-const bookRouter = require("./routes/app-api/book/book");
-app.use("/app-api/book", bookRouter);
+const bookRouter = require("./routes/ccl-api/book/book");
+app.use("/ccl-api/book", bookRouter);
 
 // 卡池分组路由
-const seriesRouter = require("./routes/app-api/series/series");
-app.use("/app-api/series", seriesRouter);
+const seriesRouter = require("./routes/ccl-api/series/series");
+app.use("/ccl-api/series", seriesRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

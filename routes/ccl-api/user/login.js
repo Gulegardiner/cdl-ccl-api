@@ -4,7 +4,7 @@ const express = require("express");
 const router = express.Router();
 
 // 导入login的路由处理模块
-const loginHandler = require("../../../services/login");
+const loginHandler = require("../../../services/login.js");
 
 const Joi = require("joi");
 // 导入expressJoi

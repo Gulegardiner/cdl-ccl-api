@@ -49,10 +49,10 @@ exports.uploadImage = [
     const onlyId = crypto.randomUUID();
     const results = [];
 
-    // 构建实际存储路径（含可选的二级文件夹）
+    // 构建实际存储路径（含可选的二级文件夹），使用绝对路径方便后续直接读取
     const filePath = subFolder
-      ? path.join("./public/uploads", folder, subFolder)
-      : path.join("./public/uploads", folder);
+      ? path.resolve("./public/uploads", folder, subFolder)
+      : path.resolve("./public/uploads", folder);
 
     // 确保目标目录存在
     if (!fs.existsSync(filePath)) {
@@ -60,20 +60,24 @@ exports.uploadImage = [
     }
 
     for (const file of files) {
-      const newName = Buffer.from(file.originalname, "latin1").toString("utf8");
+      const originName = Buffer.from(file.originalname, "latin1").toString("utf8");
+      const ext = path.extname(originName);
+      const baseName = path.basename(originName, ext);
+      const newName = `${baseName}_${onlyId}${ext}`;
       const destPath = path.join(filePath, newName);
 
       // 从内存写入磁盘
       fs.writeFileSync(destPath, file.buffer);
 
-      // 插入到 images 表（image_url 包含相对路径，如 subFolder/filename）
-      const imageUrl = subFolder ? `${subFolder}/${newName}` : newName;
+      // 生成 URL 相对路径（去掉 public 前缀），如 /uploads/cards/11111_uuid.png
+      // 前端可直接作为 URL 使用，后端读取时拼上 "public" 即可
+      const urlPath = "/" + path.relative("./public", destPath).replace(/\\/g, "/");
       const sql = "INSERT INTO images SET ?";
       results.push(
         new Promise((resolve, reject) => {
-          db.query(sql, { image_url: imageUrl, onlyId, account }, (err, result) => {
+          db.query(sql, { image_url: urlPath, onlyId, account }, (err, result) => {
             if (err) return reject(err);
-            resolve({ image_url: imageUrl });
+            resolve({ image_url: urlPath });
           });
         })
       );

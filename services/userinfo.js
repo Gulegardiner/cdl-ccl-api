@@ -13,11 +13,11 @@ exports.uploadAvatar = (req, res) => {
   let newName = Buffer.from(req.files[0].originalname, "latin1").toString("utf8");
   // 更换名字
   fs.renameSync(
-    "./public/uploads/Image/" + oldName,
-    "./public/uploads/Image/" + newName
+    "./public/uploads/avatars/" + oldName,
+    "./public/uploads/avatars/" + newName
   );
-  // 插到image表里
-  const sql = "insert into image set ?";
+  // 插到avatars表里
+  const sql = "insert into avatars set ?";
   db.query(
     sql,
     {

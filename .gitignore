@@ -1,6 +1,6 @@
 node_modules/
-public/uploads/Image/*
+public/uploads/avatars/*
 public/uploads/Others/*
-!public/uploads/Image/.gitkeep
+!public/uploads/avatars/.gitkeep
 !public/uploads/Others/.gitkeep
 .env

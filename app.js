@@ -24,22 +24,22 @@ app.use(bodyParser.json());
 const multer = require("multer");
 
 // 设置文件存储路径和文件名
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, "./public/uploads/Image");
-    } else {
-      cb(null, "./public/uploads/Others");
-    }
-  },
-  filename: (req, file, cb) => {
-    const originalName = file.originalname;
-    const encodedName = Buffer.from(originalName, "latin1").toString("utf8");
-    cb(null, encodedName);
-  },
-});
-const upload = multer({ storage: storage });
-app.use(upload.any());
+// const storage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     if (file.mimetype.startsWith("image/")) {
+//       cb(null, "./public/uploads/Image");
+//     } else {
+//       cb(null, "./public/uploads/Others");
+//     }
+//   },
+//   filename: (req, file, cb) => {
+//     const originalName = file.originalname;
+//     const encodedName = Buffer.from(originalName, "latin1").toString("utf8");
+//     cb(null, encodedName);
+//   },
+// });
+// const upload = multer({ storage: storage });
+// app.use(upload.any());
 // 静态托管
 app.use(express.static("./public"));
 
@@ -72,6 +72,7 @@ app.use(
       /^\/ccl-api\/user\/checkKaptcha/,
       /^\/ccl-api\/book\/getBookList/,
       /^\/ccl-api\/series\/getSeriesList/,
+      /^\/ccl-api\/upload\/uploadImage/,
 
 
     ],
@@ -92,6 +93,10 @@ app.use("/ccl-api/book", bookRouter);
 // 卡池分组路由
 const seriesRouter = require("./routes/ccl-api/series/series");
 app.use("/ccl-api/series", seriesRouter);
+
+// 通用上传路由
+const uploadRouter = require("./routes/ccl-api/upload/upload");
+app.use("/ccl-api/upload", uploadRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

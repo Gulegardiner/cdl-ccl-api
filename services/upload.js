@@ -97,3 +97,55 @@ exports.uploadImage = [
       });
   },
 ];
+
+// 获取图片流接口
+// filePath 入参格式如：/uploads/covers/cover_e28e8314-29b2-4f44-8d49-d492859e86f5.webp
+exports.getImageStream = (req, res) => {
+  const { filePath } = req.query;
+
+  if (!filePath) {
+    return res.status(400).send({
+      status: 400,
+      message: "缺少 filePath 参数",
+    });
+  }
+
+  // 防止路径穿越攻击，限制只能访问 public 目录
+  const baseDir = path.resolve(__dirname, "../public");
+  const realPath = path.resolve(baseDir, "." + filePath);
+
+  if (!realPath.startsWith(baseDir)) {
+    return res.status(403).send({
+      status: 403,
+      message: "禁止访问该路径",
+    });
+  }
+
+  // 检查文件是否存在
+  fs.stat(realPath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      return res.status(404).send({
+        status: 404,
+        message: "文件不存在",
+      });
+    }
+
+    // 根据文件类型设置 Content-Type
+    const ext = path.extname(realPath).toLowerCase();
+    const mimeMap = {
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".svg": "image/svg+xml",
+      ".pdf": "application/pdf",
+    };
+    const contentType = mimeMap[ext] || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+
+    // 创建读取流并返回给前端
+    const stream = fs.createReadStream(realPath);
+    stream.pipe(res);
+  });
+};

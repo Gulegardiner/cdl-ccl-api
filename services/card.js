@@ -15,7 +15,7 @@ exports.getCardList = (req, res) => {
     queryValues.push(series_id);
   }
   if (keyword) {
-    queryConditions.push("(name LIKE ? OR series LIKE ? OR note LIKE ?)");
+    queryConditions.push("(name LIKE ? OR series_name LIKE ? OR note LIKE ?)");
     queryValues.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
 
@@ -98,7 +98,7 @@ exports.createCard = (req, res) => {
     image_url,
     back_image_url,
     rarity,
-    series,
+    series_name,
     display_style,
     orientation,
     note,
@@ -167,7 +167,7 @@ exports.createCard = (req, res) => {
           image_url: image_url || null,
           back_image_url: back_image_url || null,
           rarity: rarity || null,
-          series: series || null,
+          series_name: series_name || '',
           display_style: display_style || "card",
           orientation: orientation || "portrait",
           note: note || null,

@@ -16,8 +16,8 @@ exports.uploadAvatar = (req, res) => {
     "./public/uploads/avatars/" + oldName,
     "./public/uploads/avatars/" + newName
   );
-  // 插到avatars表里
-  const sql = "insert into avatars set ?";
+  // 插到images表里
+  const sql = "insert into images set ?";
   db.query(
     sql,
     {

@@ -74,6 +74,8 @@ app.use(
       /^\/ccl-api\/series\/getSeriesList/,
       /^\/ccl-api\/upload\/uploadImage/,
       /^\/ccl-api\/upload\/getImageStream/,
+      /^\/ccl-api\/card\/getCardList/,
+      /^\/ccl-api\/card\/getCardDetail/,
 
 
     ],
@@ -94,6 +96,10 @@ app.use("/ccl-api/book", bookRouter);
 // 卡池分组路由
 const seriesRouter = require("./routes/ccl-api/series/series");
 app.use("/ccl-api/series", seriesRouter);
+
+// 卡片路由
+const cardRouter = require("./routes/ccl-api/card/card");
+app.use("/ccl-api/card", cardRouter);
 
 // 通用上传路由
 const uploadRouter = require("./routes/ccl-api/upload/upload");

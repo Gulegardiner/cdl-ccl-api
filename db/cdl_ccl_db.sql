@@ -97,4 +97,32 @@ CREATE TABLE `series` (
   KEY `idx_book_id` (`book_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic COMMENT = '卡池分组表';
 
+-- ----------------------------
+-- 卡片表
+-- ----------------------------
+DROP TABLE IF EXISTS `cards`;
+CREATE TABLE `cards` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `card_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '卡片唯一标识ID',
+  `book_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '所属卡池ID',
+  `series_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '所属分组ID（可选）',
+  `name` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '卡片名称',
+  `image_url` varchar(500) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '卡片图片URL',
+  `back_image_url` varchar(500) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '卡片背面图片URL',
+  `rarity` varchar(50) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '稀有度（R/SR/SSR等）',
+  `series_name` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '所属分组名称',
+  `display_style` varchar(50) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT 'card' COMMENT '展示样式（card等）',
+  `orientation` varchar(50) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT 'portrait' COMMENT '方向（portrait/landscape）',
+  `note` text CHARACTER SET utf8 COLLATE utf8_general_ci NULL COMMENT '备注',
+  `owned_count` int(11) NULL DEFAULT 0 COMMENT '拥有数量',
+  `onlyId` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '前端表单唯一标识',
+  `account` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL COMMENT '所属账号',
+  `created_at` bigint(20) NULL DEFAULT NULL COMMENT '创建时间戳',
+  `updated_at` bigint(20) NULL DEFAULT NULL COMMENT '更新时间戳',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_card_id` (`card_id`) USING BTREE,
+  KEY `idx_book_id` (`book_id`) USING BTREE,
+  KEY `idx_series_id` (`series_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic COMMENT = '卡片表';
+
 SET FOREIGN_KEY_CHECKS = 1;

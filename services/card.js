@@ -1,4 +1,30 @@
 const db = require("../db/index");
+const jwt = require("jsonwebtoken");
+const jwtconfig = require("../jwt_config/index.js");
+
+// 解析请求中的用户账号
+function getAccountFromRequest(req) {
+  if (req.auth && req.auth.account) {
+    return req.auth.account;
+  }
+  if (req.body && req.body.account) {
+    return req.body.account;
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, jwtconfig.jwtSecretKey);
+      if (decoded && decoded.account) {
+        return decoded.account;
+      }
+    } catch (e) {
+      // 忽略无效或过期的 token
+    }
+  }
+  return null;
+}
+
 
 // 获取卡片列表（支持按 book_id 或 series_id 筛选和分页）
 exports.getCardList = (req, res) => {
@@ -6,24 +32,35 @@ exports.getCardList = (req, res) => {
   const queryConditions = [];
   const queryValues = [];
 
+  const userAccount = getAccountFromRequest(req);
+  if (userAccount) {
+    queryValues.push(userAccount);
+  }
+
   if (book_id) {
-    queryConditions.push("book_id = ?");
+    queryConditions.push("c.book_id = ?");
     queryValues.push(book_id);
   }
   if (series_id) {
-    queryConditions.push("series_id = ?");
+    queryConditions.push("c.series_id = ?");
     queryValues.push(series_id);
   }
   if (keyword) {
-    queryConditions.push("(name LIKE ? OR series_name LIKE ? OR note LIKE ?)");
+    queryConditions.push("(c.name LIKE ? OR c.series_name LIKE ? OR c.note LIKE ?)");
     queryValues.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
 
-  let sql = "SELECT * FROM cards";
+  let sql = "";
+  if (userAccount) {
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ?";
+  } else {
+    sql = "SELECT c.*, 0 AS owned_count FROM cards c";
+  }
+
   if (queryConditions.length) {
     sql += ` WHERE ${queryConditions.join(" AND ")}`;
   }
-  sql += " ORDER BY created_at ASC";
+  sql += " ORDER BY c.created_at ASC";
 
   db.query(sql, queryValues, (err, result) => {
     if (err) {
@@ -71,8 +108,18 @@ exports.getCardDetail = (req, res) => {
     });
   }
 
-  const sql = "SELECT * FROM cards WHERE card_id = ?";
-  db.query(sql, card_id, (err, result) => {
+  const userAccount = getAccountFromRequest(req);
+  let sql;
+  let queryValues;
+  if (userAccount) {
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ? WHERE c.card_id = ?";
+    queryValues = [userAccount, card_id];
+  } else {
+    sql = "SELECT c.*, 0 AS owned_count FROM cards c WHERE c.card_id = ?";
+    queryValues = [card_id];
+  }
+
+  db.query(sql, queryValues, (err, result) => {
     if (err) return res.cc(err);
     if (result.length === 0) {
       return res.send({
@@ -171,7 +218,7 @@ exports.createCard = (req, res) => {
           display_style: display_style || "card",
           orientation: orientation || "portrait",
           note: note || null,
-          owned_count: owned_count || 0,
+          owned_count: 0,
           onlyId: onlyId || null,
           account: account || null,
           created_at: now,
@@ -185,10 +232,24 @@ exports.createCard = (req, res) => {
               message: "新增卡片失败",
             });
           }
-          res.send({
-            status: 200,
-            message: "新增卡片成功",
-          });
+
+          // 如果存在账户并且指定了拥有数量，则写入用户关系表
+          const userAccount = getAccountFromRequest(req) || account;
+          if (userAccount && owned_count !== undefined) {
+            const insertRelationSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+            db.query(insertRelationSql, [userAccount, card_id, owned_count || 0, now, now], (err) => {
+              if (err) return res.cc(err);
+              return res.send({
+                status: 200,
+                message: "新增卡片成功",
+              });
+            });
+          } else {
+            return res.send({
+              status: 200,
+              message: "新增卡片成功",
+            });
+          }
         }
       );
     }
@@ -206,78 +267,136 @@ exports.updateCard = (req, res) => {
     });
   }
 
-  if (Object.keys(fields).length === 0) {
-    return res.send({
-      status: 400,
-      message: "未提供任何需要更新的字段",
-    });
-  }
+  const userAccount = getAccountFromRequest(req);
+  let ownedCountUpdatePromise = null;
 
-  // 如果修改了 book_id，检查新卡池是否存在
-  if (fields.book_id) {
-    const bookSql = "SELECT * FROM books WHERE book_id = ?";
-    db.query(bookSql, fields.book_id, (err, bookResults) => {
-      if (err) return res.cc(err);
-      if (bookResults.length === 0) {
-        return res.send({
-          status: 400,
-          message: "关联的卡池不存在",
-        });
-      }
-      checkSeriesAndUpdate();
-    });
-  } else {
-    checkSeriesAndUpdate();
-  }
+  // 如果修改了 owned_count，从 fields 中剥离并单独更新 user_cards 表
+  if ('owned_count' in fields) {
+    const owned_count = Number(fields.owned_count);
+    delete fields.owned_count;
 
-  function checkSeriesAndUpdate() {
-    // 如果修改了 series_id，检查新分组是否存在
-    if (fields.series_id) {
-      const seriesSql = "SELECT * FROM series WHERE series_id = ?";
-      db.query(seriesSql, fields.series_id, (err, seriesResults) => {
-        if (err) return res.cc(err);
-        if (seriesResults.length === 0) {
-          return res.send({
-            status: 400,
-            message: "关联的分组不存在",
+    if (!userAccount) {
+      return res.send({
+        status: 400,
+        message: "未登录或未指定账户，无法修改卡片拥有数",
+      });
+    }
+
+    ownedCountUpdatePromise = new Promise((resolve, reject) => {
+      const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+      db.query(checkSql, [userAccount, card_id], (err, results) => {
+        if (err) return reject(err);
+        const now = Date.now();
+        if (results.length > 0) {
+          const updateSql = "UPDATE user_cards SET owned_count = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+          db.query(updateSql, [owned_count, now, userAccount, card_id], (err, result) => {
+            if (err) return reject(err);
+            resolve(result);
+          });
+        } else {
+          const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+          db.query(insertSql, [userAccount, card_id, owned_count, now, now], (err, result) => {
+            if (err) return reject(err);
+            resolve(result);
           });
         }
-        doUpdate();
+      });
+    });
+  }
+
+  function finishUpdate() {
+    if (Object.keys(fields).length === 0) {
+      if (ownedCountUpdatePromise) {
+        return res.send({
+          status: 200,
+          message: "更新卡片拥有数量成功",
+        });
+      } else {
+        return res.send({
+          status: 400,
+          message: "未提供任何需要更新的字段",
+        });
+      }
+    }
+
+    // 如果修改了 book_id，检查新卡池是否存在
+    if (fields.book_id) {
+      const bookSql = "SELECT * FROM books WHERE book_id = ?";
+      db.query(bookSql, fields.book_id, (err, bookResults) => {
+        if (err) return res.cc(err);
+        if (bookResults.length === 0) {
+          return res.send({
+            status: 400,
+            message: "关联的卡池不存在",
+          });
+        }
+        checkSeriesAndUpdate();
       });
     } else {
-      doUpdate();
+      checkSeriesAndUpdate();
+    }
+
+    function checkSeriesAndUpdate() {
+      // 如果修改了 series_id，检查新分组是否存在
+      if (fields.series_id) {
+        const seriesSql = "SELECT * FROM series WHERE series_id = ?";
+        db.query(seriesSql, fields.series_id, (err, seriesResults) => {
+          if (err) return res.cc(err);
+          if (seriesResults.length === 0) {
+            return res.send({
+              status: 400,
+              message: "关联的分组不存在",
+            });
+          }
+          doUpdate();
+        });
+      } else {
+        doUpdate();
+      }
+    }
+
+    function doUpdate() {
+      // 更新时间戳
+      fields.updated_at = Date.now();
+
+      const updates = Object.keys(fields)
+        .map((key) => `${key} = ?`)
+        .join(", ");
+      const values = [...Object.values(fields), card_id];
+      const sql = `UPDATE cards SET ${updates} WHERE card_id = ?`;
+
+      db.query(sql, values, (err, result) => {
+        if (err) {
+          return res.send({
+            status: 500,
+            message: "更新失败",
+            error: err,
+          });
+        }
+        if (result.affectedRows === 0) {
+          return res.send({
+            status: 404,
+            message: "卡片不存在或未修改任何字段",
+          });
+        }
+        return res.send({
+          status: 200,
+          message: "卡片更新成功",
+        });
+      });
     }
   }
 
-  function doUpdate() {
-    // 更新时间戳
-    fields.updated_at = Date.now();
-
-    const updates = Object.keys(fields)
-      .map((key) => `${key} = ?`)
-      .join(", ");
-    const values = [...Object.values(fields), card_id];
-    const sql = `UPDATE cards SET ${updates} WHERE card_id = ?`;
-
-    db.query(sql, values, (err, result) => {
-      if (err) {
-        return res.send({
-          status: 500,
-          message: "更新失败",
-          error: err,
-        });
-      }
-      if (result.affectedRows === 0) {
-        return res.send({
-          status: 404,
-          message: "卡片不存在或未修改任何字段",
-        });
-      }
-      return res.send({
-        status: 200,
-        message: "卡片更新成功",
+  if (ownedCountUpdatePromise) {
+    ownedCountUpdatePromise
+      .then(() => {
+        finishUpdate();
+      })
+      .catch((err) => {
+        res.cc(err);
       });
-    });
+  } else {
+    finishUpdate();
   }
 };
 
@@ -307,9 +426,177 @@ exports.deleteCard = (req, res) => {
         message: "卡片不存在",
       });
     }
-    return res.send({
-      status: 200,
-      message: "删除成功",
+
+    // 同时清理该卡片所有用户的拥有关系记录
+    const deleteRelationSql = "DELETE FROM user_cards WHERE card_id = ?";
+    db.query(deleteRelationSql, [card_id], (err) => {
+      if (err) console.error("Failed to delete user_cards relationships:", err);
+      return res.send({
+        status: 200,
+        message: "删除成功",
+      });
     });
   });
 };
+
+// 获取当前用户的所有拥有卡片关系列表
+exports.getUserCardList = (req, res) => {
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法获取拥有卡片数据",
+    });
+  }
+
+  const sql = "SELECT * FROM user_cards WHERE account = ?";
+  db.query(sql, [userAccount], (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "数据库查询失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "获取用户卡片关系成功",
+      data: result,
+    });
+  });
+};
+
+// 直接更新或新增卡片拥有数
+exports.updateUserCard = (req, res) => {
+  const { card_id, owned_count } = req.body;
+  if (!card_id || owned_count === undefined) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 或 owned_count 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法更新拥有卡片数据",
+    });
+  }
+
+  const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+  db.query(checkSql, [userAccount, card_id], (err, results) => {
+    if (err) return res.cc(err);
+    const now = Date.now();
+    if (results.length > 0) {
+      const updateSql = "UPDATE user_cards SET owned_count = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [owned_count, now, userAccount, card_id], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "更新卡片拥有数量成功",
+        });
+      });
+    } else {
+      const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+      db.query(insertSql, [userAccount, card_id, owned_count, now, now], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "新增卡片拥有关系成功",
+        });
+      });
+    }
+  });
+};
+
+// 点亮卡片
+exports.litCard = (req, res) => {
+  const { card_id } = req.body;
+  if (!card_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法点亮卡片",
+    });
+  }
+
+  const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+  db.query(checkSql, [userAccount, card_id], (err, results) => {
+    if (err) return res.cc(err);
+    const now = Date.now();
+    if (results.length > 0) {
+      if (results[0].owned_count > 0) {
+        return res.send({
+          status: 200,
+          message: "卡片已点亮",
+        });
+      }
+      const updateSql = "UPDATE user_cards SET owned_count = 1, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "点亮卡片成功",
+        });
+      });
+    } else {
+      const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, 1, ?, ?)";
+      db.query(insertSql, [userAccount, card_id, now, now], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "点亮卡片成功",
+        });
+      });
+    }
+  });
+};
+
+// 取消点亮卡片
+exports.unlitCard = (req, res) => {
+  const { card_id } = req.body;
+  if (!card_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法取消点亮卡片",
+    });
+  }
+
+  const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+  db.query(checkSql, [userAccount, card_id], (err, results) => {
+    if (err) return res.cc(err);
+    const now = Date.now();
+    if (results.length > 0) {
+      const updateSql = "UPDATE user_cards SET owned_count = 0, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "取消点亮成功",
+        });
+      });
+    } else {
+      return res.send({
+        status: 200,
+        message: "取消点亮成功",
+      });
+    }
+  });
+};
+

@@ -17,4 +17,17 @@ router.post("/updateCard", cardHandler.updateCard);
 // 删除卡片
 router.post("/deleteCard", cardHandler.deleteCard);
 
+// 获取当前用户的所有拥有卡片关系列表
+router.post("/getUserCardList", cardHandler.getUserCardList);
+
+// 直接更新或新增卡片拥有数
+router.post("/updateUserCard", cardHandler.updateUserCard);
+
+// 点亮卡片
+router.post("/litCard", cardHandler.litCard);
+
+// 取消点亮卡片
+router.post("/unlitCard", cardHandler.unlitCard);
+
 module.exports = router;
+

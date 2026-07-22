@@ -25,17 +25,6 @@ CREATE TABLE `users`  (
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic;
 
--- ----------------------------
--- 图片表
--- ----------------------------
-DROP TABLE IF EXISTS `image`;
-CREATE TABLE `image`  (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `image_url` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
-  `account` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
-  `onlyId` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
-  PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- 图片表（新版）
@@ -125,4 +114,22 @@ CREATE TABLE `cards` (
   KEY `idx_series_id` (`series_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic COMMENT = '卡片表';
 
+-- ----------------------------
+-- 用户卡片拥有关系表
+-- ----------------------------
+DROP TABLE IF EXISTS `user_cards`;
+CREATE TABLE `user_cards` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `account` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '用户账号',
+  `card_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '卡片唯一标识ID',
+  `owned_count` int(11) NULL DEFAULT 0 COMMENT '拥有数量',
+  `created_at` bigint(20) NULL DEFAULT NULL COMMENT '创建时间戳',
+  `updated_at` bigint(20) NULL DEFAULT NULL COMMENT '更新时间戳',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_account_card` (`account`, `card_id`) USING BTREE,
+  KEY `idx_account` (`account`) USING BTREE,
+  KEY `idx_card_id` (`card_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Dynamic COMMENT = '用户卡片拥有关系表';
+
 SET FOREIGN_KEY_CHECKS = 1;
+

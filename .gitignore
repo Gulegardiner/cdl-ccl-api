@@ -4,3 +4,4 @@ public/uploads/Others/*
 !public/uploads/avatars/.gitkeep
 !public/uploads/Others/.gitkeep
 .env
+public/uploads

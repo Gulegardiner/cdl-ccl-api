@@ -7,49 +7,25 @@ const multer = require("multer");
 // 允许的上传文件夹白名单
 const ALLOWED_FOLDERS = ["cards", "covers"];
 
-// 动态 multer 存储配置：根据 query 参数 folder 和 subFolder 决定存储目录
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const folder = req.query.folder;
-    if (!folder || !ALLOWED_FOLDERS.includes(folder)) {
-      return cb(new Error("无效的 folder 参数，必须为 cards 或 covers"));
-    }
-
-    const subFolder = req.query.subFolder;
-    let dest = path.join("./public/uploads", folder);
-
-    // 如果传了 subFolder，拼接二级目录并自动创建
-    if (subFolder) {
-      dest = path.join(dest, subFolder);
-      if (!fs.existsSync(dest)) {
-        fs.mkdirSync(dest, { recursive: true });
-      }
-    } else {
-      // 确保一级目录存在
-      if (!fs.existsSync(dest)) {
-        fs.mkdirSync(dest, { recursive: true });
-      }
-    }
-
-    cb(null, dest);
-  },
-  filename: (req, file, cb) => {
-    // 临时文件名，后续会 rename 为原始文件名
-    cb(null, crypto.randomUUID() + path.extname(file.originalname));
-  },
-});
-
-const upload = multer({ storage });
+// 使用内存存储，避免 destination 回调中 req.body 尚未解析的问题
+const upload = multer({ storage: multer.memoryStorage() });
 
 // 通用上传接口
 exports.uploadImage = [
-  upload.array("files"),
+  upload.fields([
+    { name: "files", maxCount: 20 },
+    { name: "file", maxCount: 20 },
+  ]),
   (req, res) => {
-    const folder = req.query.folder;
-    const subFolder = req.query.subFolder;
-    const account = req.body.account;
+    // 兼容 files 和 file 两种字段名
+    const files = [].concat(req.files?.["files"] || [], req.files?.["file"] || []);
 
-    if (!req.files || req.files.length === 0) {
+    // 从 body 或 query 中获取参数（兼容 form-data 和 URL query 两种传参方式）
+    const folder = req.body?.folder || req.query.folder;
+    const subFolder = req.body?.subFolder || req.query.subFolder;
+    const account = req.body?.account;
+
+    if (files.length === 0) {
       return res.send({
         status: 400,
         message: "请上传文件",
@@ -78,15 +54,17 @@ exports.uploadImage = [
       ? path.join("./public/uploads", folder, subFolder)
       : path.join("./public/uploads", folder);
 
-    for (const file of req.files) {
-      let oldName = file.filename;
-      let newName = Buffer.from(file.originalname, "latin1").toString("utf8");
+    // 确保目标目录存在
+    if (!fs.existsSync(filePath)) {
+      fs.mkdirSync(filePath, { recursive: true });
+    }
 
-      // 重命名为原始文件名
-      fs.renameSync(
-        path.join(filePath, oldName),
-        path.join(filePath, newName)
-      );
+    for (const file of files) {
+      const newName = Buffer.from(file.originalname, "latin1").toString("utf8");
+      const destPath = path.join(filePath, newName);
+
+      // 从内存写入磁盘
+      fs.writeFileSync(destPath, file.buffer);
 
       // 插入到 images 表（image_url 包含相对路径，如 subFolder/filename）
       const imageUrl = subFolder ? `${subFolder}/${newName}` : newName;

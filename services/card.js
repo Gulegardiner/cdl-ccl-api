@@ -427,10 +427,10 @@ exports.deleteCard = (req, res) => {
       });
     }
 
-    // 同时清理该卡片所有用户的拥有关系记录
-    const deleteRelationSql = "DELETE FROM user_cards WHERE card_id = ?";
-    db.query(deleteRelationSql, [card_id], (err) => {
-      if (err) console.error("Failed to delete user_cards relationships:", err);
+    // 将该卡片所有用户的拥有关系记录标记为已删除（is_delete = 1）
+    const updateRelationSql = "UPDATE user_cards SET is_delete = 1 WHERE card_id = ?";
+    db.query(updateRelationSql, [card_id], (err) => {
+      if (err) console.error("Failed to update user_cards relationships:", err);
       return res.send({
         status: 200,
         message: "删除成功",

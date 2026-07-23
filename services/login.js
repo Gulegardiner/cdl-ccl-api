@@ -36,7 +36,7 @@ exports.register = (req, res) => {
     reginfo.password = bcrypt.hashSync(reginfo.password, 10);
     // 第四步,把账号跟密码插入到users表里面
     const sql1 = "insert into users set ?";
-    const identity = "用户";
+    const identity = "user";
     const create_time = new Date();
     db.query(
       sql1,

@@ -2,7 +2,7 @@ const db = require("../db/index");
 
 // 获取卡池列表（支持分页和筛选）
 exports.getBookList = (req, res) => {
-  let { page, limit, theme, keyword } = req.body;
+  let { page, limit, theme, keyword, status, creater_name, creater_account, login_account, admin_account } = req.body;
   const queryConditions = [];
   const queryValues = [];
 
@@ -13,6 +13,27 @@ exports.getBookList = (req, res) => {
   if (keyword) {
     queryConditions.push("(name LIKE ? OR description LIKE ?)");
     queryValues.push(`%${keyword}%`, `%${keyword}%`);
+  }
+  if (creater_name) {
+    queryConditions.push("creater_name LIKE ?");
+    queryValues.push(`%${creater_name}%`);
+  }
+
+  if (admin_account) {
+    queryConditions.push("(status = 'pass' OR status = 'wait' OR (status = 'draft' AND creater_account = ?))");
+    queryValues.push(admin_account);
+  } else if (login_account) {
+    queryConditions.push("(status = 'pass' OR creater_account = ?)");
+    queryValues.push(login_account);
+  } else {
+    if (status) {
+      queryConditions.push("status = ?");
+      queryValues.push(status);
+    }
+    if (creater_account) {
+      queryConditions.push("creater_account = ?");
+      queryValues.push(creater_account);
+    }
   }
 
   let sql = "SELECT * FROM books";
@@ -85,12 +106,19 @@ exports.getBookDetail = (req, res) => {
 
 // 新增卡池
 exports.createBook = (req, res) => {
-  const { book_id, name, theme, description, cover_color, cover_image_url } = req.body;
+  const { book_id, name, theme, description, cover_color, cover_image_url, creater_name, creater_account } = req.body;
 
   if (!book_id || !name) {
     return res.send({
       status: 400,
       message: "book_id 和 name 不能为空",
+    });
+  }
+
+  if (!creater_name || !creater_account) {
+    return res.send({
+      status: 400,
+      message: "creater_name 和 creater_account 不能为空",
     });
   }
 
@@ -116,6 +144,9 @@ exports.createBook = (req, res) => {
         description: description || null,
         cover_color: cover_color || null,
         cover_image_url: cover_image_url || null,
+        creater_name,
+        creater_account,
+        status: "draft",
         created_at: now,
         updated_at: now,
       },

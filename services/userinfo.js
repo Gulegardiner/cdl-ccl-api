@@ -12,9 +12,10 @@ exports.uploadAvatar = (req, res) => {
   let oldName = req.files[0].filename;
   let newName = Buffer.from(req.files[0].originalname, "latin1").toString("utf8");
   // 更换名字
+  const avatarDir = path.resolve(__dirname, "../public/uploads/avatars/");
   fs.renameSync(
-    "./public/uploads/avatars/" + oldName,
-    "./public/uploads/avatars/" + newName
+    path.join(avatarDir, oldName),
+    path.join(avatarDir, newName)
   );
   // 插到images表里
   const sql = "insert into images set ?";

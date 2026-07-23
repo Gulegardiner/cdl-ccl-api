@@ -41,7 +41,8 @@ const multer = require("multer");
 // const upload = multer({ storage: storage });
 // app.use(upload.any());
 // 静态托管
-app.use(express.static("./public"));
+app.use(express.static(path.join(__dirname, "public")));
+app.use("/ccl-api", express.static(path.join(__dirname, "public")));
 
 // 在所有的路由前面，挂载一个错误处理的中间件
 app.use((req, res, next) => {

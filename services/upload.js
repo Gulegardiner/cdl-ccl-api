@@ -50,9 +50,10 @@ exports.uploadImage = [
     const results = [];
 
     // 构建实际存储路径（含可选的二级文件夹），使用绝对路径方便后续直接读取
+    const basePublicDir = path.resolve(__dirname, "../public");
     const filePath = subFolder
-      ? path.resolve("./public/uploads", folder, subFolder)
-      : path.resolve("./public/uploads", folder);
+      ? path.resolve(basePublicDir, "uploads", folder, subFolder)
+      : path.resolve(basePublicDir, "uploads", folder);
 
     // 确保目标目录存在
     if (!fs.existsSync(filePath)) {
@@ -71,7 +72,7 @@ exports.uploadImage = [
 
       // 生成 URL 相对路径（去掉 public 前缀），如 /uploads/cards/11111_uuid.png
       // 前端可直接作为 URL 使用，后端读取时拼上 "public" 即可
-      const urlPath = "/" + path.relative("./public", destPath).replace(/\\/g, "/");
+      const urlPath = "/" + path.relative(basePublicDir, destPath).replace(/\\/g, "/");
       const sql = "INSERT INTO images SET ?";
       results.push(
         new Promise((resolve, reject) => {
@@ -110,11 +111,25 @@ exports.getImageStream = (req, res) => {
     });
   }
 
+  // 确保对路径进行解码，防止中文等字符因为 URL 编码无法被 file system 识别
+  let decodedPath = filePath;
+  try {
+    decodedPath = decodeURIComponent(filePath);
+  } catch (e) {
+    console.error("解码 filePath 失败:", e);
+  }
+
   // 防止路径穿越攻击，限制只能访问 public 目录
   const baseDir = path.resolve(__dirname, "../public");
-  const realPath = path.resolve(baseDir, "." + filePath);
+  const realPath = path.join(baseDir, decodedPath);
+
+  console.log("getImageStream 访问日志:");
+  console.log("- 传入参数 filePath:", filePath);
+  console.log("- 解码后路径 decodedPath:", decodedPath);
+  console.log("- 物理绝对路径 realPath:", realPath);
 
   if (!realPath.startsWith(baseDir)) {
+    console.warn("getImageStream 访问越界被拦截:", realPath);
     return res.status(403).send({
       status: 403,
       message: "禁止访问该路径",
@@ -123,7 +138,17 @@ exports.getImageStream = (req, res) => {
 
   // 检查文件是否存在
   fs.stat(realPath, (err, stats) => {
-    if (err || !stats.isFile()) {
+    if (err) {
+      console.error("getImageStream 获取文件 stat 失败:", err.message);
+      return res.status(404).send({
+        status: 404,
+        message: "文件不存在",
+        error: err.message,
+        resolvedPath: realPath,
+      });
+    }
+
+    if (!stats.isFile()) {
       return res.status(404).send({
         status: 404,
         message: "文件不存在",

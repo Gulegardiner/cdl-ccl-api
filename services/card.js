@@ -337,19 +337,27 @@ exports.updateCard = (req, res) => {
     }
 
     function checkSeriesAndUpdate() {
-      // 如果修改了 series_id，检查新分组是否存在
-      if (fields.series_id) {
-        const seriesSql = "SELECT * FROM series WHERE series_id = ?";
-        db.query(seriesSql, fields.series_id, (err, seriesResults) => {
-          if (err) return res.cc(err);
-          if (seriesResults.length === 0) {
-            return res.send({
-              status: 400,
-              message: "关联的分组不存在",
-            });
-          }
+      // 如果修改了 series_id，检查新分组是否存在，并同步更新 series_name
+      if ('series_id' in fields) {
+        const sId = fields.series_id;
+        if (!sId || sId === 'none' || sId === '') {
+          fields.series_id = null;
+          fields.series_name = null;
           doUpdate();
-        });
+        } else {
+          const seriesSql = "SELECT * FROM series WHERE series_id = ?";
+          db.query(seriesSql, [sId], (err, seriesResults) => {
+            if (err) return res.cc(err);
+            if (seriesResults.length === 0) {
+              return res.send({
+                status: 400,
+                message: "关联的分组不存在",
+              });
+            }
+            fields.series_name = seriesResults[0].name;
+            doUpdate();
+          });
+        }
       } else {
         doUpdate();
       }

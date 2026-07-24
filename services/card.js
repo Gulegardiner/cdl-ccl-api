@@ -48,12 +48,8 @@ exports.getCardList = (req, res) => {
     queryValues.push(series_id);
   }
   if (keyword) {
-    queryConditions.push("(c.name LIKE ? OR c.series_name LIKE ? OR c.note LIKE ?)");
-    queryValues.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
-  }
-  if (creater_name) {
-    queryConditions.push("c.creater_name LIKE ?");
-    queryValues.push(`%${creater_name}%`);
+    queryConditions.push("(c.name LIKE ? OR c.series_name LIKE ? OR c.note LIKE ? OR c.creater_name LIKE ?)");
+    queryValues.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
   if (creater_account) {
     queryConditions.push("c.creater_account = ?");

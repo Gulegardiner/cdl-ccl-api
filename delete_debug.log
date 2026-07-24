@@ -1,0 +1,28 @@
+[2026/7/24 10:39:10] deleteFile:
+- 原 urlPath: /uploads/cards/r05-face_eae15f03-4ed5-4f85-a22d-6e7eb4ea6855.webp
+- 清理后 cleanPath: /uploads/cards/r05-face_eae15f03-4ed5-4f85-a22d-6e7eb4ea6855.webp
+- 解析绝对路径 absolutePath: E:\cdl-xiaoka\ccl-api\public\uploads\cards\r05-face_eae15f03-4ed5-4f85-a22d-6e7eb4ea6855.webp
+- 是否存在: true
+- 成功删除文件
+
+[2026/7/24 10:39:10] deleteFile:
+- 原 urlPath: /uploads/cards/r11-face_d87749b9-b2dc-4032-859f-d9d160aa23cd.webp
+- 清理后 cleanPath: /uploads/cards/r11-face_d87749b9-b2dc-4032-859f-d9d160aa23cd.webp
+- 解析绝对路径 absolutePath: E:\cdl-xiaoka\ccl-api\public\uploads\cards\r11-face_d87749b9-b2dc-4032-859f-d9d160aa23cd.webp
+- 是否存在: true
+- 成功删除文件
+
+[2026/7/24 10:39:31] deleteFile:
+- 原 urlPath: /uploads/cards/ssr04-face_f683ad37-ef78-4683-b1d1-5c6017255bce.webp
+- 清理后 cleanPath: /uploads/cards/ssr04-face_f683ad37-ef78-4683-b1d1-5c6017255bce.webp
+- 解析绝对路径 absolutePath: E:\cdl-xiaoka\ccl-api\public\uploads\cards\ssr04-face_f683ad37-ef78-4683-b1d1-5c6017255bce.webp
+- 是否存在: true
+- 成功删除文件
+
+[2026/7/24 10:39:31] deleteFile:
+- 原 urlPath: /uploads/cards/r23-face_70258ce2-7a21-47b9-9cc7-c7a91eb16d9b.webp
+- 清理后 cleanPath: /uploads/cards/r23-face_70258ce2-7a21-47b9-9cc7-c7a91eb16d9b.webp
+- 解析绝对路径 absolutePath: E:\cdl-xiaoka\ccl-api\public\uploads\cards\r23-face_70258ce2-7a21-47b9-9cc7-c7a91eb16d9b.webp
+- 是否存在: true
+- 成功删除文件
+

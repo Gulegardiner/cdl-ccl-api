@@ -1,6 +1,8 @@
 const db = require("../db/index");
 const jwt = require("jsonwebtoken");
 const jwtconfig = require("../jwt_config/index.js");
+const fs = require("fs");
+const path = require("path");
 
 // 解析请求中的用户账号
 function getAccountFromRequest(req) {
@@ -428,6 +430,56 @@ exports.updateCard = (req, res) => {
   }
 };
 
+// 辅助函数：安全删除服务器上的文件
+const deleteFile = (urlPath) => {
+  if (!urlPath) return;
+  try {
+    // 1. 去除 URL 中的查询参数和 hash (例如 ?t=123456 或 #hash)
+    let cleanPath = urlPath.split("?")[0].split("#")[0];
+
+    // 2. 如果是完整的 URL (以 http:// 或 https:// 开头)，提取其 pathname
+    if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+      try {
+        cleanPath = new URL(cleanPath).pathname;
+      } catch (e) {
+        const match = cleanPath.match(/^https?:\/\/[^\/]+(\/.*)$/);
+        if (match) cleanPath = match[1];
+      }
+    }
+
+    // 3. 构建绝对路径
+    const basePublicDir = path.resolve(__dirname, "../public");
+    const absolutePath = path.join(basePublicDir, cleanPath);
+
+    // 写入 debug 日志到文件，以便查阅
+    try {
+      fs.appendFileSync(
+        path.join(__dirname, "../delete_debug.log"),
+        `[${new Date().toLocaleString()}] deleteFile:\n- 原 urlPath: ${urlPath}\n- 清理后 cleanPath: ${cleanPath}\n- 解析绝对路径 absolutePath: ${absolutePath}\n- 是否存在: ${fs.existsSync(absolutePath)}\n`
+      );
+    } catch (_) {}
+
+    if (fs.existsSync(absolutePath)) {
+      fs.unlinkSync(absolutePath);
+      try {
+        fs.appendFileSync(path.join(__dirname, "../delete_debug.log"), `- 成功删除文件\n\n`);
+      } catch (_) {}
+    } else {
+      try {
+        fs.appendFileSync(path.join(__dirname, "../delete_debug.log"), `- 文件不存在，跳过删除\n\n`);
+      } catch (_) {}
+    }
+  } catch (err) {
+    console.error(`Failed to delete file ${urlPath}:`, err);
+    try {
+      fs.appendFileSync(
+        path.join(__dirname, "../delete_debug.log"),
+        `Error deleting ${urlPath}: ${err.stack}\n\n`
+      );
+    } catch (_) {}
+  }
+};
+
 // 删除卡片
 exports.deleteCard = (req, res) => {
   const { card_id } = req.body;
@@ -439,29 +491,54 @@ exports.deleteCard = (req, res) => {
     });
   }
 
-  const sql = "DELETE FROM cards WHERE card_id = ?";
-  db.query(sql, [card_id], (err, result) => {
+  // 1. 先查询卡片数据获取图片路径
+  const selectSql = "SELECT image_url, back_image_url FROM cards WHERE card_id = ?";
+  db.query(selectSql, [card_id], (err, results) => {
     if (err) {
       return res.send({
         status: 500,
-        message: "数据库删除失败",
+        message: "数据库查询失败",
         error: err,
       });
     }
-    if (result.affectedRows === 0) {
+    if (results.length === 0) {
       return res.send({
         status: 404,
         message: "卡片不存在",
       });
     }
 
-    // 将该卡片所有用户的拥有关系记录标记为已删除（is_delete = 1）
-    const updateRelationSql = "UPDATE user_cards SET is_delete = 1 WHERE card_id = ?";
-    db.query(updateRelationSql, [card_id], (err) => {
-      if (err) console.error("Failed to update user_cards relationships:", err);
-      return res.send({
-        status: 200,
-        message: "删除成功",
+    const { image_url, back_image_url } = results[0];
+
+    // 2. 执行删除卡片记录
+    const deleteSql = "DELETE FROM cards WHERE card_id = ?";
+    db.query(deleteSql, [card_id], (err, result) => {
+      if (err) {
+        return res.send({
+          status: 500,
+          message: "数据库删除失败",
+          error: err,
+        });
+      }
+      if (result.affectedRows === 0) {
+        return res.send({
+          status: 404,
+          message: "卡片不存在",
+        });
+      }
+
+      // 3. 删除服务器本地对应的图片文件
+      deleteFile(image_url);
+      deleteFile(back_image_url);
+
+      // 4. 将该卡片所有用户的拥有关系记录标记为已删除（is_delete = 1）
+      const updateRelationSql = "UPDATE user_cards SET is_delete = 1 WHERE card_id = ?";
+      db.query(updateRelationSql, [card_id], (err) => {
+        if (err) console.error("Failed to update user_cards relationships:", err);
+        return res.send({
+          status: 200,
+          message: "删除成功",
+        });
       });
     });
   });

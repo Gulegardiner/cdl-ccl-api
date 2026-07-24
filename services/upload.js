@@ -123,10 +123,10 @@ exports.getImageStream = (req, res) => {
   const baseDir = path.resolve(__dirname, "../public");
   const realPath = path.join(baseDir, decodedPath);
 
-  console.log("getImageStream 访问日志:");
-  console.log("- 传入参数 filePath:", filePath);
-  console.log("- 解码后路径 decodedPath:", decodedPath);
-  console.log("- 物理绝对路径 realPath:", realPath);
+  // console.log("getImageStream 访问日志:");
+  // console.log("- 传入参数 filePath:", filePath);
+  // console.log("- 解码后路径 decodedPath:", decodedPath);
+  // console.log("- 物理绝对路径 realPath:", realPath);
 
   if (!realPath.startsWith(baseDir)) {
     console.warn("getImageStream 访问越界被拦截:", realPath);

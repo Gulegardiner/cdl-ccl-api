@@ -91,7 +91,7 @@ exports.login = (req, res) => {
       update_time: "",
     };
     const tokenStr = jwt.sign(user, jwtconfig.jwtSecretKey, {
-      expiresIn: "48h",
+      expiresIn: "30d",
     });
     res.send({
       results: results[0],

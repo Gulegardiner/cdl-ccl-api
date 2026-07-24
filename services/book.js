@@ -178,39 +178,68 @@ exports.updateBook = (req, res) => {
     });
   }
 
-  if (Object.keys(fields).length === 0) {
-    return res.send({
-      status: 400,
-      message: "未提供任何需要更新的字段",
-    });
-  }
+  // 1. 先查询卡池原数据，用于权限判定
+  const querySql = "SELECT * FROM books WHERE book_id = ?";
+  db.query(querySql, book_id, (err, result) => {
+    if (err) return res.cc(err);
+    if (result.length === 0) {
+      return res.send({ status: 404, message: "卡池不存在" });
+    }
 
-  // 更新时间戳
-  fields.updated_at = Date.now();
+    const book = result[0];
+    const userAccount = req.auth ? req.auth.account : null;
+    const userIdentity = req.auth ? req.auth.identity : null;
 
-  const updates = Object.keys(fields)
-    .map((key) => `${key} = ?`)
-    .join(", ");
-  const values = [...Object.values(fields), book_id];
-  const sql = `UPDATE books SET ${updates} WHERE book_id = ?`;
+    // 2. 状态流转越权校验
+    if (fields.status && fields.status !== book.status) {
+      // 变更为 'pass' (通过发布) 或 从 'pass' 变更为其他状态 (下架操作)，必须是管理员
+      const isAuditAction = fields.status === 'pass' || book.status === 'pass';
+      if (isAuditAction && userIdentity !== 'admin') {
+        return res.send({
+          status: 403,
+          message: "无权操作：只有管理员可审核/发布卡池",
+        });
+      }
+    }
 
-  db.query(sql, values, (err, result) => {
-    if (err) {
+    // 3. 普通字段修改校验：必须是创建者本人或管理员
+    const isCreator = userAccount && book.creater_account === userAccount;
+    const isAdmin = userIdentity === 'admin';
+    if (!isCreator && !isAdmin) {
       return res.send({
-        status: 500,
-        message: "更新失败",
-        error: err,
+        status: 403,
+        message: "没有操作权限（非卡池创建者且非管理员）",
       });
     }
-    if (result.affectedRows === 0) {
+
+    if (Object.keys(fields).length === 0) {
       return res.send({
-        status: 404,
-        message: "卡池不存在或未修改任何字段",
+        status: 400,
+        message: "未提供任何需要更新的字段",
       });
     }
-    return res.send({
-      status: 200,
-      message: "卡池更新成功",
+
+    // 更新时间戳
+    fields.updated_at = Date.now();
+
+    const updates = Object.keys(fields)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+    const values = [...Object.values(fields), book_id];
+    const sql = `UPDATE books SET ${updates} WHERE book_id = ?`;
+
+    db.query(sql, values, (err, result) => {
+      if (err) {
+        return res.send({
+          status: 500,
+          message: "更新失败",
+          error: err,
+        });
+      }
+      return res.send({
+        status: 200,
+        message: "卡池更新成功",
+      });
     });
   });
 };
@@ -226,24 +255,38 @@ exports.deleteBook = (req, res) => {
     });
   }
 
-  const sql = "DELETE FROM books WHERE book_id = ?";
-  db.query(sql, [book_id], (err, result) => {
-    if (err) {
+  // 1. 校验删除权限：只有创建者本人或管理员可以删除
+  const querySql = "SELECT * FROM books WHERE book_id = ?";
+  db.query(querySql, book_id, (err, result) => {
+    if (err) return res.cc(err);
+    if (result.length === 0) {
+      return res.send({ status: 404, message: "卡池不存在" });
+    }
+
+    const book = result[0];
+    const userAccount = req.auth ? req.auth.account : null;
+    const userIdentity = req.auth ? req.auth.identity : null;
+
+    if (book.creater_account !== userAccount && userIdentity !== 'admin') {
       return res.send({
-        status: 500,
-        message: "数据库删除失败",
-        error: err,
+        status: 403,
+        message: "无权操作：只有创建者或管理员可删除卡池",
       });
     }
-    if (result.affectedRows === 0) {
+
+    const sql = "DELETE FROM books WHERE book_id = ?";
+    db.query(sql, [book_id], (err, result) => {
+      if (err) {
+        return res.send({
+          status: 500,
+          message: "数据库删除失败",
+          error: err,
+        });
+      }
       return res.send({
-        status: 404,
-        message: "卡池不存在",
+        status: 200,
+        message: "删除成功",
       });
-    }
-    return res.send({
-      status: 200,
-      message: "删除成功",
     });
   });
 };

@@ -28,7 +28,7 @@ function getAccountFromRequest(req) {
 
 // 获取卡片列表（支持按 book_id 或 series_id 筛选和分页）
 exports.getCardList = (req, res) => {
-  let { page, limit, book_id, series_id, keyword } = req.body;
+  let { page, limit, book_id, series_id, keyword, creater_name, creater_account, rarity, name } = req.body;
   const queryConditions = [];
   const queryValues = [];
 
@@ -48,6 +48,22 @@ exports.getCardList = (req, res) => {
   if (keyword) {
     queryConditions.push("(c.name LIKE ? OR c.series_name LIKE ? OR c.note LIKE ?)");
     queryValues.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+  }
+  if (creater_name) {
+    queryConditions.push("c.creater_name LIKE ?");
+    queryValues.push(`%${creater_name}%`);
+  }
+  if (creater_account) {
+    queryConditions.push("c.creater_account = ?");
+    queryValues.push(creater_account);
+  }
+  if (rarity) {
+    queryConditions.push("c.rarity = ?");
+    queryValues.push(rarity);
+  }
+  if (name) {
+    queryConditions.push("c.name LIKE ?");
+    queryValues.push(`%${name}%`);
   }
 
   let sql = "";
@@ -152,6 +168,8 @@ exports.createCard = (req, res) => {
     owned_count,
     onlyId,
     account,
+    creater_name,
+    creater_account,
   } = req.body;
 
   if (!card_id || !book_id || !name) {
@@ -221,6 +239,8 @@ exports.createCard = (req, res) => {
           owned_count: 0,
           onlyId: onlyId || null,
           account: account || null,
+          creater_name: creater_name || null,
+          creater_account: creater_account || null,
           created_at: now,
           updated_at: now,
         },

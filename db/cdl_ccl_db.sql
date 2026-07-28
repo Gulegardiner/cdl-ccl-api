@@ -123,6 +123,8 @@ CREATE TABLE `user_cards` (
   `account` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '用户账号',
   `card_id` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT '卡片唯一标识ID',
   `owned_count` int(11) NULL DEFAULT 0 COMMENT '拥有数量',
+  `is_liked` int(1) NULL DEFAULT 0 COMMENT '是否喜欢：1喜欢，0默认',
+  `un_want` int(1) NULL DEFAULT 0 COMMENT '是否不想要：1不想要，0默认',
   `created_at` bigint(20) NULL DEFAULT NULL COMMENT '创建时间戳',
   `updated_at` bigint(20) NULL DEFAULT NULL COMMENT '更新时间戳',
   PRIMARY KEY (`id`) USING BTREE,

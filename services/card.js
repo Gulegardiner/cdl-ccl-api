@@ -66,9 +66,9 @@ exports.getCardList = (req, res) => {
 
   let sql = "";
   if (userAccount) {
-    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ?";
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ?";
   } else {
-    sql = "SELECT c.*, 0 AS owned_count FROM cards c";
+    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want FROM cards c";
   }
 
   if (queryConditions.length) {
@@ -126,10 +126,10 @@ exports.getCardDetail = (req, res) => {
   let sql;
   let queryValues;
   if (userAccount) {
-    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ? WHERE c.card_id = ?";
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ? WHERE c.card_id = ?";
     queryValues = [userAccount, card_id];
   } else {
-    sql = "SELECT c.*, 0 AS owned_count FROM cards c WHERE c.card_id = ?";
+    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want FROM cards c WHERE c.card_id = ?";
     queryValues = [card_id];
   }
 
@@ -696,6 +696,186 @@ exports.unlitCard = (req, res) => {
       return res.send({
         status: 200,
         message: "取消点亮成功",
+      });
+    }
+  });
+};
+
+// 喜欢卡片
+exports.likeCard = (req, res) => {
+  const { card_id } = req.body;
+  if (!card_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录",
+    });
+  }
+
+  const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+  db.query(checkSql, [userAccount, card_id], (err, results) => {
+    if (err) return res.cc(err);
+    const now = Date.now();
+    if (results.length > 0) {
+      if (results[0].is_liked === 1) {
+        return res.send({
+          status: 200,
+          message: "卡片已设为喜欢",
+        });
+      }
+      const updateSql = "UPDATE user_cards SET is_liked = 1, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "喜欢卡片成功",
+        });
+      });
+    } else {
+      const insertSql = "INSERT INTO user_cards (account, card_id, is_liked, created_at, updated_at) VALUES (?, ?, 1, ?, ?)";
+      db.query(insertSql, [userAccount, card_id, now, now], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "喜欢卡片成功",
+        });
+      });
+    }
+  });
+};
+
+// 取消喜欢卡片
+exports.unlikeCard = (req, res) => {
+  const { card_id } = req.body;
+  if (!card_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法取消喜欢卡片",
+    });
+  }
+
+  const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+  db.query(checkSql, [userAccount, card_id], (err, results) => {
+    if (err) return res.cc(err);
+    const now = Date.now();
+    if (results.length > 0) {
+      const updateSql = "UPDATE user_cards SET is_liked = 0, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "取消喜欢成功",
+        });
+      });
+    } else {
+      return res.send({
+        status: 200,
+        message: "取消喜欢成功",
+      });
+    }
+  });
+};
+
+// 标记为不想要
+exports.unwantCard = (req, res) => {
+  const { card_id } = req.body;
+  if (!card_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法标记为不想要",
+    });
+  }
+
+  const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+  db.query(checkSql, [userAccount, card_id], (err, results) => {
+    if (err) return res.cc(err);
+    const now = Date.now();
+    if (results.length > 0) {
+      if (results[0].un_want === 1) {
+        return res.send({
+          status: 200,
+          message: "卡片已标记为不想要",
+        });
+      }
+      const updateSql = "UPDATE user_cards SET un_want = 1, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "标记为不想要成功",
+        });
+      });
+    } else {
+      const insertSql = "INSERT INTO user_cards (account, card_id, un_want, created_at, updated_at) VALUES (?, ?, 1, ?, ?)";
+      db.query(insertSql, [userAccount, card_id, now, now], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "标记为不想要成功",
+        });
+      });
+    }
+  });
+};
+
+// 取消不想要标记
+exports.cancelUnwantCard = (req, res) => {
+  const { card_id } = req.body;
+  if (!card_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法取消不想要标记",
+    });
+  }
+
+  const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+  db.query(checkSql, [userAccount, card_id], (err, results) => {
+    if (err) return res.cc(err);
+    const now = Date.now();
+    if (results.length > 0) {
+      const updateSql = "UPDATE user_cards SET un_want = 0, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+        if (err) return res.cc(err);
+        return res.send({
+          status: 200,
+          message: "取消不想要标记成功",
+        });
+      });
+    } else {
+      return res.send({
+        status: 200,
+        message: "取消不想要标记成功",
       });
     }
   });

@@ -29,5 +29,17 @@ router.post("/litCard", cardHandler.litCard);
 // 取消点亮卡片
 router.post("/unlitCard", cardHandler.unlitCard);
 
+// 喜欢卡片
+router.post("/likeCard", cardHandler.likeCard);
+
+// 取消喜欢卡片
+router.post("/unlikeCard", cardHandler.unlikeCard);
+
+// 标记为不想要
+router.post("/unwantCard", cardHandler.unwantCard);
+
+// 取消不想要标记
+router.post("/cancelUnwantCard", cardHandler.cancelUnwantCard);
+
 module.exports = router;
 

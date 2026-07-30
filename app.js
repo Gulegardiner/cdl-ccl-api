@@ -72,6 +72,7 @@ app.use(
       /^\/ccl-api\/user\/getKaptcha/,
       /^\/ccl-api\/user\/checkKaptcha/,
       /^\/ccl-api\/book\/getBookList/,
+      /^\/ccl-api\/book\/getUniteBookList/,
       /^\/ccl-api\/series\/getSeriesList/,
       /^\/ccl-api\/upload\/uploadImage/,
       /^\/ccl-api\/upload\/getImageStream/,

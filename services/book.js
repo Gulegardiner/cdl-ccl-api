@@ -290,3 +290,23 @@ exports.deleteBook = (req, res) => {
     });
   });
 };
+
+// 获取合集卡池列表
+exports.getUniteBookList = (req, res) => {
+  const sql = "SELECT * FROM unite_book";
+  db.query(sql, (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "数据库查询失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "获取合集卡池列表成功",
+      data: result,
+    });
+  });
+};
+

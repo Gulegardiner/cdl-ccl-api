@@ -17,4 +17,7 @@ router.post("/updateBook", bookHandler.updateBook);
 // 删除卡池
 router.post("/deleteBook", bookHandler.deleteBook);
 
+// 获取合集卡池列表
+router.post("/getUniteBookList", bookHandler.getUniteBookList);
+
 module.exports = router;

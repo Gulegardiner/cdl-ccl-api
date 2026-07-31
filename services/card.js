@@ -48,8 +48,26 @@ exports.getCardList = (req, res) => {
     queryValues.push(series_id);
   }
   if (keyword) {
-    queryConditions.push("(c.name LIKE ? OR c.series_name LIKE ? OR c.note LIKE ? OR c.creater_name LIKE ?)");
-    queryValues.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+    const rawWords = keyword.trim().split(/\s+/);
+    const tokens = [];
+    for (const word of rawWords) {
+      if (!word) continue;
+      const segments = word.match(/[\u4e00-\u9fa5]+|[a-zA-Z0-9]+/g);
+      if (segments && segments.length > 0) {
+        tokens.push(...segments);
+      } else {
+        tokens.push(word);
+      }
+    }
+
+    if (tokens.length > 0) {
+      const conditions = [];
+      tokens.forEach(token => {
+        conditions.push("(c.name LIKE ? OR c.series_name LIKE ? OR c.note LIKE ? OR c.creater_name LIKE ?)");
+        queryValues.push(`%${token}%`, `%${token}%`, `%${token}%`, `%${token}%`);
+      });
+      queryConditions.push(`(${conditions.join(" AND ")})`);
+    }
   }
   if (creater_account) {
     queryConditions.push("c.creater_account = ?");

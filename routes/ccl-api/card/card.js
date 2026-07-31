@@ -41,5 +41,12 @@ router.post("/unwantCard", cardHandler.unwantCard);
 // 取消不想要标记
 router.post("/cancelUnwantCard", cardHandler.cancelUnwantCard);
 
+// 保存文字识别历史导入记录
+router.post("/saveImportHistory", cardHandler.saveImportHistory);
+
+// 获取已有的文字识别历史导入记录
+router.post("/getImportHistory", cardHandler.getImportHistory);
+
 module.exports = router;
+
 

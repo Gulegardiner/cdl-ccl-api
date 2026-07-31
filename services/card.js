@@ -881,3 +881,76 @@ exports.cancelUnwantCard = (req, res) => {
   });
 };
 
+// 保存文字识别历史导入记录
+exports.saveImportHistory = (req, res) => {
+  const { unite_bookid, historyList } = req.body;
+  if (!unite_bookid) {
+    return res.send({
+      status: 400,
+      message: "缺少 unite_bookid 参数",
+    });
+  }
+  if (!historyList || !Array.isArray(historyList) || historyList.length === 0) {
+    return res.send({
+      status: 200,
+      message: "没有需要保存的历史记录",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法保存历史导入记录",
+    });
+  }
+
+  const now = Date.now();
+  const values = historyList.map(item => [
+    userAccount,
+    unite_bookid,
+    item.card_code,
+    item.record_time,
+    now
+  ]);
+
+  const sql = "INSERT IGNORE INTO user_text_import_history (account, unite_bookid, card_code, record_time, created_at) VALUES ?";
+  db.query(sql, [values], (err, result) => {
+    if (err) return res.cc(err);
+    return res.send({
+      status: 200,
+      message: "保存导入历史成功",
+    });
+  });
+};
+
+// 获取已有的文字识别历史导入记录
+exports.getImportHistory = (req, res) => {
+  const { unite_bookid } = req.body;
+  if (!unite_bookid) {
+    return res.send({
+      status: 400,
+      message: "缺少 unite_bookid 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法获取导入历史记录",
+    });
+  }
+
+  const sql = "SELECT card_code, record_time FROM user_text_import_history WHERE account = ? AND unite_bookid = ?";
+  db.query(sql, [userAccount, unite_bookid], (err, results) => {
+    if (err) return res.cc(err);
+    return res.send({
+      status: 200,
+      message: "获取导入历史成功",
+      data: results
+    });
+  });
+};
+
+

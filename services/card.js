@@ -721,7 +721,7 @@ exports.unlitCard = (req, res) => {
 
 // 喜欢卡片
 exports.likeCard = (req, res) => {
-  const { card_id } = req.body;
+  const { card_id, count } = req.body;
   if (!card_id) {
     return res.send({
       status: 400,
@@ -737,19 +737,15 @@ exports.likeCard = (req, res) => {
     });
   }
 
+  const targetCount = (count !== undefined && count !== null) ? parseInt(count, 10) : 1;
+
   const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
   db.query(checkSql, [userAccount, card_id], (err, results) => {
     if (err) return res.cc(err);
     const now = Date.now();
     if (results.length > 0) {
-      if (results[0].is_liked === 1) {
-        return res.send({
-          status: 200,
-          message: "卡片已设为喜欢",
-        });
-      }
-      const updateSql = "UPDATE user_cards SET is_liked = 1, updated_at = ? WHERE account = ? AND card_id = ?";
-      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+      const updateSql = "UPDATE user_cards SET is_liked = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [targetCount, now, userAccount, card_id], (err, result) => {
         if (err) return res.cc(err);
         return res.send({
           status: 200,
@@ -757,8 +753,8 @@ exports.likeCard = (req, res) => {
         });
       });
     } else {
-      const insertSql = "INSERT INTO user_cards (account, card_id, is_liked, created_at, updated_at) VALUES (?, ?, 1, ?, ?)";
-      db.query(insertSql, [userAccount, card_id, now, now], (err, result) => {
+      const insertSql = "INSERT INTO user_cards (account, card_id, is_liked, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+      db.query(insertSql, [userAccount, card_id, targetCount, now, now], (err, result) => {
         if (err) return res.cc(err);
         return res.send({
           status: 200,
@@ -811,7 +807,7 @@ exports.unlikeCard = (req, res) => {
 
 // 标记为不想要
 exports.unwantCard = (req, res) => {
-  const { card_id } = req.body;
+  const { card_id, count } = req.body;
   if (!card_id) {
     return res.send({
       status: 400,
@@ -827,19 +823,15 @@ exports.unwantCard = (req, res) => {
     });
   }
 
+  const targetCount = (count !== undefined && count !== null) ? parseInt(count, 10) : 1;
+
   const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
   db.query(checkSql, [userAccount, card_id], (err, results) => {
     if (err) return res.cc(err);
     const now = Date.now();
     if (results.length > 0) {
-      if (results[0].un_want === 1) {
-        return res.send({
-          status: 200,
-          message: "卡片已标记为不想要",
-        });
-      }
-      const updateSql = "UPDATE user_cards SET un_want = 1, updated_at = ? WHERE account = ? AND card_id = ?";
-      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+      const updateSql = "UPDATE user_cards SET un_want = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [targetCount, now, userAccount, card_id], (err, result) => {
         if (err) return res.cc(err);
         return res.send({
           status: 200,
@@ -847,8 +839,8 @@ exports.unwantCard = (req, res) => {
         });
       });
     } else {
-      const insertSql = "INSERT INTO user_cards (account, card_id, un_want, created_at, updated_at) VALUES (?, ?, 1, ?, ?)";
-      db.query(insertSql, [userAccount, card_id, now, now], (err, result) => {
+      const insertSql = "INSERT INTO user_cards (account, card_id, un_want, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+      db.query(insertSql, [userAccount, card_id, targetCount, now, now], (err, result) => {
         if (err) return res.cc(err);
         return res.send({
           status: 200,

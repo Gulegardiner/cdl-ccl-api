@@ -79,6 +79,7 @@ app.use(
       /^\/ccl-api\/upload\/getImageStream/,
       /^\/ccl-api\/card\/getCardList/,
       /^\/ccl-api\/card\/getCardDetail/,
+      /^\/ccl-api\/book\/getBookDetail/,
     ],
   })
 );
@@ -120,7 +121,7 @@ app.use(function (err, req, res, next) {
   if (err.name === "UnauthorizedError") {
     return res.send({
       status: 401,
-      message: "登录过期，请重新登录",
+      message: "请重新登录",
     });
   }
 

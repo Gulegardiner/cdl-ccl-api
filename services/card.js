@@ -84,9 +84,9 @@ exports.getCardList = (req, res) => {
 
   let sql = "";
   if (userAccount) {
-    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ?";
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want, COALESCE(uc.already_changed, 0) AS already_changed FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ?";
   } else {
-    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want FROM cards c";
+    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want, 0 AS already_changed FROM cards c";
   }
 
   if (queryConditions.length) {
@@ -144,10 +144,10 @@ exports.getCardDetail = (req, res) => {
   let sql;
   let queryValues;
   if (userAccount) {
-    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ? WHERE c.card_id = ?";
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want, COALESCE(uc.already_changed, 0) AS already_changed FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ? WHERE c.card_id = ?";
     queryValues = [userAccount, card_id];
   } else {
-    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want FROM cards c WHERE c.card_id = ?";
+    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want, 0 AS already_changed FROM cards c WHERE c.card_id = ?";
     queryValues = [card_id];
   }
 
@@ -309,7 +309,9 @@ exports.updateCard = (req, res) => {
   // 如果修改了 owned_count，从 fields 中剥离并单独更新 user_cards 表
   if ('owned_count' in fields) {
     const owned_count = Number(fields.owned_count);
+    const reason = fields.reason;
     delete fields.owned_count;
+    delete fields.reason;
 
     if (!userAccount) {
       return res.send({
@@ -324,13 +326,29 @@ exports.updateCard = (req, res) => {
         if (err) return reject(err);
         const now = Date.now();
         if (results.length > 0) {
-          const updateSql = "UPDATE user_cards SET owned_count = ?, updated_at = ? WHERE account = ? AND card_id = ?";
-          db.query(updateSql, [owned_count, now, userAccount, card_id], (err, result) => {
+          const old_owned_count = results[0].owned_count || 0;
+          const current_un_want = results[0].un_want || 0;
+          const current_already_changed = results[0].already_changed || 0;
+          let new_un_want = current_un_want;
+          let new_already_changed = current_already_changed;
+          if (owned_count < old_owned_count) {
+            const diff = old_owned_count - owned_count;
+            if (reason === 'correction') {
+              const res_un_want = current_un_want - diff;
+              new_un_want = (owned_count > 0 && res_un_want < 1) ? 1 : Math.max(0, res_un_want);
+              new_already_changed = current_already_changed;
+            } else {
+              new_un_want = Math.max(0, current_un_want - diff);
+              new_already_changed = current_already_changed + diff;
+            }
+          }
+          const updateSql = "UPDATE user_cards SET owned_count = ?, un_want = ?, already_changed = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+          db.query(updateSql, [owned_count, new_un_want, new_already_changed, now, userAccount, card_id], (err, result) => {
             if (err) return reject(err);
             resolve(result);
           });
         } else {
-          const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+          const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, un_want, already_changed, created_at, updated_at) VALUES (?, ?, ?, 0, 0, ?, ?)";
           db.query(insertSql, [userAccount, card_id, owned_count, now, now], (err, result) => {
             if (err) return reject(err);
             resolve(result);
@@ -587,7 +605,7 @@ exports.getUserCardList = (req, res) => {
 
 // 直接更新或新增卡片拥有数
 exports.updateUserCard = (req, res) => {
-  const { card_id, owned_count } = req.body;
+  const { card_id, owned_count, reason } = req.body;
   if (!card_id || owned_count === undefined) {
     return res.send({
       status: 400,
@@ -608,8 +626,24 @@ exports.updateUserCard = (req, res) => {
     if (err) return res.cc(err);
     const now = Date.now();
     if (results.length > 0) {
-      const updateSql = "UPDATE user_cards SET owned_count = ?, updated_at = ? WHERE account = ? AND card_id = ?";
-      db.query(updateSql, [owned_count, now, userAccount, card_id], (err, result) => {
+      const old_owned_count = results[0].owned_count || 0;
+      const current_un_want = results[0].un_want || 0;
+      const current_already_changed = results[0].already_changed || 0;
+      let new_un_want = current_un_want;
+      let new_already_changed = current_already_changed;
+      if (owned_count < old_owned_count) {
+        const diff = old_owned_count - owned_count;
+        if (reason === 'correction') {
+          const res_un_want = current_un_want - diff;
+          new_un_want = (owned_count > 0 && res_un_want < 1) ? 1 : Math.max(0, res_un_want);
+          new_already_changed = current_already_changed;
+        } else {
+          new_un_want = Math.max(0, current_un_want - diff);
+          new_already_changed = current_already_changed + diff;
+        }
+      }
+      const updateSql = "UPDATE user_cards SET owned_count = ?, un_want = ?, already_changed = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [owned_count, new_un_want, new_already_changed, now, userAccount, card_id], (err, result) => {
         if (err) return res.cc(err);
         return res.send({
           status: 200,
@@ -617,7 +651,7 @@ exports.updateUserCard = (req, res) => {
         });
       });
     } else {
-      const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+      const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, un_want, already_changed, created_at, updated_at) VALUES (?, ?, ?, 0, 0, ?, ?)";
       db.query(insertSql, [userAccount, card_id, owned_count, now, now], (err, result) => {
         if (err) return res.cc(err);
         return res.send({
@@ -681,7 +715,7 @@ exports.litCard = (req, res) => {
 
 // 取消点亮卡片
 exports.unlitCard = (req, res) => {
-  const { card_id } = req.body;
+  const { card_id, reason } = req.body;
   if (!card_id) {
     return res.send({
       status: 400,
@@ -702,8 +736,21 @@ exports.unlitCard = (req, res) => {
     if (err) return res.cc(err);
     const now = Date.now();
     if (results.length > 0) {
-      const updateSql = "UPDATE user_cards SET owned_count = 0, updated_at = ? WHERE account = ? AND card_id = ?";
-      db.query(updateSql, [now, userAccount, card_id], (err, result) => {
+      const old_owned_count = results[0].owned_count || 0;
+      const current_un_want = results[0].un_want || 0;
+      const current_already_changed = results[0].already_changed || 0;
+      let new_un_want = current_un_want;
+      let new_already_changed = current_already_changed;
+      if (0 < old_owned_count) {
+        const diff = old_owned_count;
+        const dec_un_want = Math.min(diff, current_un_want);
+        new_un_want = current_un_want - dec_un_want;
+        if (reason !== 'correction') {
+          new_already_changed = current_already_changed + diff;
+        }
+      }
+      const updateSql = "UPDATE user_cards SET owned_count = 0, un_want = ?, already_changed = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+      db.query(updateSql, [new_un_want, new_already_changed, now, userAccount, card_id], (err, result) => {
         if (err) return res.cc(err);
         return res.send({
           status: 200,

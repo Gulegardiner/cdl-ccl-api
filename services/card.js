@@ -1010,7 +1010,7 @@ exports.getImportHistory = (req, res) => {
   });
 };
 
-// 清空当前用户的所有点亮记录、收换卡记录
+// 清空当前用户的所有点亮记录、收换卡记录以及导入历史记录
 exports.clearUserCards = (req, res) => {
   const userAccount = getAccountFromRequest(req);
   if (!userAccount) {
@@ -1020,18 +1020,32 @@ exports.clearUserCards = (req, res) => {
     });
   }
 
-  const sql = "DELETE FROM user_cards WHERE account = ?";
-  db.query(sql, [userAccount], (err, result) => {
+  // 1. 删除用户卡片拥有关系记录
+  const sql1 = "DELETE FROM user_cards WHERE account = ?";
+  db.query(sql1, [userAccount], (err, result) => {
     if (err) {
       return res.send({
         status: 500,
-        message: "数据库操作失败",
+        message: "数据库操作失败(user_cards)",
         error: err,
       });
     }
-    return res.send({
-      status: 200,
-      message: "清空所有记录成功",
+
+    // 2. 删除文字识别导入历史记录
+    const sql2 = "DELETE FROM user_text_import_history WHERE account = ?";
+    db.query(sql2, [userAccount], (err, result) => {
+      if (err) {
+        return res.send({
+          status: 500,
+          message: "数据库操作失败(user_text_import_history)",
+          error: err,
+        });
+      }
+
+      return res.send({
+        status: 200,
+        message: "清空所有记录和导入历史成功",
+      });
     });
   });
 };

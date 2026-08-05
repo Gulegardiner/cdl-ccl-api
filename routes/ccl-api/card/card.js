@@ -47,6 +47,9 @@ router.post("/saveImportHistory", cardHandler.saveImportHistory);
 // 获取已有的文字识别历史导入记录
 router.post("/getImportHistory", cardHandler.getImportHistory);
 
+// 清空当前用户的所有点亮记录、收换卡记录
+router.post("/clearUserCards", cardHandler.clearUserCards);
+
 module.exports = router;
 
 

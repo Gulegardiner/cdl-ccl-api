@@ -1010,4 +1010,30 @@ exports.getImportHistory = (req, res) => {
   });
 };
 
+// 清空当前用户的所有点亮记录、收换卡记录
+exports.clearUserCards = (req, res) => {
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法清空记录",
+    });
+  }
+
+  const sql = "DELETE FROM user_cards WHERE account = ?";
+  db.query(sql, [userAccount], (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "数据库操作失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "清空所有记录成功",
+    });
+  });
+};
+
 

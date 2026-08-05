@@ -1050,4 +1050,93 @@ exports.clearUserCards = (req, res) => {
   });
 };
 
+// 清空当前用户指定卡池的点亮记录、收换卡记录以及导入历史记录
+exports.clearUserCardsByBook = (req, res) => {
+  const { book_id } = req.body;
+  if (!book_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 book_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法清空记录",
+    });
+  }
+
+  // 1. 先查询该卡池下的所有 card_id
+  const cardIdSql = "SELECT card_id FROM cards WHERE book_id = ?";
+  db.query(cardIdSql, [book_id], (err, cardRows) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "查询卡片列表失败",
+        error: err,
+      });
+    }
+
+    const cardIds = cardRows.map(r => r.card_id);
+
+    // 2. 删除 user_cards 中该用户该卡池所有卡的记录（用 IN 批量删）
+    const deleteUserCards = (callback) => {
+      if (cardIds.length === 0) return callback(null);
+      const placeholders = cardIds.map(() => '?').join(',');
+      const sql = `DELETE FROM user_cards WHERE account = ? AND card_id IN (${placeholders})`;
+      db.query(sql, [userAccount, ...cardIds], (err) => callback(err));
+    };
+
+    // 3. 删除 user_text_import_history 中 unite_bookid 包含该 book_id 的记录
+    // unite_bookid 为逗号分隔的多个 book_id，需精确匹配各种位置
+    const deleteImportHistory = (callback) => {
+      const sql = `DELETE FROM user_text_import_history
+        WHERE account = ?
+        AND (
+          unite_bookid = ?
+          OR unite_bookid LIKE ?
+          OR unite_bookid LIKE ?
+          OR unite_bookid LIKE ?
+        )`;
+      db.query(
+        sql,
+        [
+          userAccount,
+          book_id,
+          `${book_id},%`,    // book_id 在开头
+          `%,${book_id},%`,  // book_id 在中间
+          `%,${book_id}`,    // book_id 在末尾
+        ],
+        (err) => callback(err)
+      );
+    };
+
+    deleteUserCards((err) => {
+      if (err) {
+        return res.send({
+          status: 500,
+          message: "清空卡片记录失败(user_cards)",
+          error: err,
+        });
+      }
+      deleteImportHistory((err) => {
+        if (err) {
+          return res.send({
+            status: 500,
+            message: "清空导入历史失败(user_text_import_history)",
+            error: err,
+          });
+        }
+        return res.send({
+          status: 200,
+          message: `已清空卡池 ${book_id} 的所有记录`,
+          clearedCards: cardIds.length,
+        });
+      });
+    });
+  });
+};
+
 

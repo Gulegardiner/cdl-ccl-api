@@ -86,6 +86,30 @@ app.use(
   })
 );
 
+// 导入数据库操作模块
+const db = require("./db/index");
+// 记录用户最后活跃调接口的日期缓存（内存防抖）：{ "account": "YYYY-MM-DD" }
+const activeUserCache = new Map();
+
+// 自动记录用户活跃时间中间件（带内存防抖，每日仅数据库写入一次）
+app.use((req, res, next) => {
+  const user = req.auth || req.user;
+  const account = user?.account;
+  if (account) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (activeUserCache.get(account) !== todayStr) {
+      activeUserCache.set(account, todayStr);
+      const updateSql = "UPDATE users SET last_active_time = NOW() WHERE account = ?";
+      db.query(updateSql, [account], (err) => {
+        if (err) {
+          console.error("更新用户活跃时间失败:", err.message);
+        }
+      });
+    }
+  }
+  next();
+});
+
 // 挂载路由
 const loginRouter = require("./routes/ccl-api/user/login");
 app.use("/ccl-api/user", loginRouter);

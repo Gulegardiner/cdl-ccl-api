@@ -337,3 +337,29 @@ exports.editUserList = (req, res) => {
     }
   );
 };
+
+// 获取用户统计信息（总用户数、日新增用户数、日活跃用户数）
+exports.getUserStats = (req, res) => {
+  const sql = `
+    SELECT 
+      COUNT(*) AS totalUsers,
+      COUNT(CASE WHEN DATE(create_time) = CURDATE() THEN 1 END) AS todayNewUsers,
+      COUNT(CASE WHEN DATE(last_active_time) = CURDATE() THEN 1 END) AS activeUsers
+    FROM users
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) return res.cc(err);
+    const data = results[0] || { totalUsers: 0, todayNewUsers: 0, activeUsers: 0 };
+    res.send({
+      status: 200,
+      message: "获取用户活跃度统计成功",
+      data: {
+        totalUsers: Number(data.totalUsers || 0),
+        todayNewUsers: Number(data.todayNewUsers || 0),
+        activeUsers: Number(data.activeUsers || 0),
+      },
+    });
+  });
+};
+

@@ -37,4 +37,7 @@ router.delete("/deleteUser", userinfoHandler.deleteUserList);
 // 编辑用户
 router.post("/editUserList", userinfoHandler.editUserList);
 
+// 获取网站用户统计信息（总用户数、日新增用户数、日活跃用户数）
+router.get("/getUserStats", userinfoHandler.getUserStats);
+
 module.exports = router;

@@ -3,7 +3,12 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
-const sharp = require("sharp");
+let sharp = null;
+try {
+  sharp = require("sharp");
+} catch (err) {
+  console.warn("⚠️ Warning: sharp 模块未能在当前环境正确加载，图片压缩功能将降级为原样存储:", err.message);
+}
 
 // 允许的上传文件夹白名单
 const ALLOWED_FOLDERS = ["cards", "covers"];
@@ -69,7 +74,7 @@ exports.uploadImage = [
       const ext = rawExt.toLowerCase();
       const baseName = path.basename(originName, rawExt);
 
-      const isCompressibleImage = imageExts.includes(ext);
+      const isCompressibleImage = imageExts.includes(ext) && sharp;
       const targetExt = isCompressibleImage ? ".webp" : ext;
       const newName = `${baseName}_${onlyId}${targetExt}`;
       const destPath = path.join(filePath, newName);
@@ -213,6 +218,13 @@ function getAllImageFiles(dirPath, arrayOfFiles = []) {
 
 // 批量压缩线上已存在的图片（原地压缩，零数据库改变，自带自动备份防损坏）
 exports.compressExistingImages = async (req, res) => {
+  if (!sharp) {
+    return res.send({
+      status: 500,
+      message: "服务器上的 sharp 模块尚未正确安装 Linux 二进制支持，请在服务器终端运行: npm rebuild sharp",
+    });
+  }
+
   const uploadsDir = path.resolve(__dirname, "../public/uploads");
   const backupBaseDir = path.resolve(__dirname, "../public/backups/compressed_images_backup");
 
@@ -256,7 +268,7 @@ exports.compressExistingImages = async (req, res) => {
           await sharp(filePath).png({ quality: 80, compressionLevel: 8 }).toFile(tmpPath);
         } else {
           // jpg, jpeg, bmp
-          await sharp(filePath).jpeg({ quality: 80, mozjpeg: true }).toFile(tmpPath);
+          await sharp(filePath).jpeg({ quality: 80 }).toFile(tmpPath);
         }
 
         const newStat = fs.statSync(tmpPath);

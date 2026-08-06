@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
+const sharp = require("sharp");
 
 // 允许的上传文件夹白名单
 const ALLOWED_FOLDERS = ["cards", "covers"];
@@ -60,25 +61,39 @@ exports.uploadImage = [
       fs.mkdirSync(filePath, { recursive: true });
     }
 
+    const imageExts = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"];
+
     for (const file of files) {
       const originName = Buffer.from(file.originalname, "latin1").toString("utf8");
-      const ext = path.extname(originName);
-      const baseName = path.basename(originName, ext);
-      const newName = `${baseName}_${onlyId}${ext}`;
+      const rawExt = path.extname(originName);
+      const ext = rawExt.toLowerCase();
+      const baseName = path.basename(originName, rawExt);
+
+      const isCompressibleImage = imageExts.includes(ext);
+      const targetExt = isCompressibleImage ? ".webp" : ext;
+      const newName = `${baseName}_${onlyId}${targetExt}`;
       const destPath = path.join(filePath, newName);
 
-      // 从内存写入磁盘
-      fs.writeFileSync(destPath, file.buffer);
+      // 处理图片压缩与格式转换
+      let processPromise;
+      if (isCompressibleImage) {
+        processPromise = sharp(file.buffer)
+          .webp({ quality: 80 })
+          .toFile(destPath);
+      } else {
+        processPromise = Promise.resolve().then(() => fs.writeFileSync(destPath, file.buffer));
+      }
 
-      // 生成 URL 相对路径（去掉 public 前缀），如 /uploads/cards/11111_uuid.png
-      // 前端可直接作为 URL 使用，后端读取时拼上 "public" 即可
-      const urlPath = "/" + path.relative(basePublicDir, destPath).replace(/\\/g, "/");
-      const sql = "INSERT INTO images SET ?";
       results.push(
-        new Promise((resolve, reject) => {
-          db.query(sql, { image_url: urlPath, onlyId, account }, (err, result) => {
-            if (err) return reject(err);
-            resolve({ image_url: urlPath });
+        processPromise.then(() => {
+          // 生成 URL 相对路径（去掉 public 前缀），如 /uploads/cards/11111_uuid.webp
+          const urlPath = "/" + path.relative(basePublicDir, destPath).replace(/\\/g, "/");
+          const sql = "INSERT INTO images SET ?";
+          return new Promise((resolve, reject) => {
+            db.query(sql, { image_url: urlPath, onlyId, account }, (err, result) => {
+              if (err) return reject(err);
+              resolve({ image_url: urlPath });
+            });
           });
         })
       );

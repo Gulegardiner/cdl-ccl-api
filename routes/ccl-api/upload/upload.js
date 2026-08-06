@@ -8,4 +8,10 @@ router.post("/uploadImage", uploadHandler.uploadImage);
 // 获取图片流接口：filePath 参数格式如 /uploads/covers/xxx.png
 router.get("/getImageStream", uploadHandler.getImageStream);
 
+// 批量压缩服务器存量图片
+router.post("/compressExistingImages", uploadHandler.compressExistingImages);
+
+// 一键撤销还原备份原图
+router.post("/rollbackCompressedImages", uploadHandler.rollbackCompressedImages);
+
 module.exports = router;

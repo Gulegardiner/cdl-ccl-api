@@ -77,6 +77,8 @@ app.use(
       /^\/ccl-api\/series\/getSeriesList/,
       /^\/ccl-api\/upload\/uploadImage/,
       /^\/ccl-api\/upload\/getImageStream/,
+      /^\/ccl-api\/upload\/compressExistingImages/,
+      /^\/ccl-api\/upload\/rollbackCompressedImages/,
       /^\/ccl-api\/card\/getCardList/,
       /^\/ccl-api\/card\/getCardDetail/,
       /^\/ccl-api\/book\/getBookDetail/,

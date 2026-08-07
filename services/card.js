@@ -1096,6 +1096,10 @@ exports.clearUserCards = (req, res) => {
         });
       }
 
+      // 3. 删除已换出小卡标签关联记录
+      const sql3 = "DELETE FROM exchange_card_tags WHERE account = ?";
+      db.query(sql3, [userAccount], () => {});
+
       return res.send({
         status: 200,
         message: "清空所有记录和导入历史成功",
@@ -1143,8 +1147,17 @@ exports.clearUserCardsByBook = (req, res) => {
       db.query(sql, [userAccount, ...cardIds], (err) => callback(err));
     };
 
-    // 3. 删除 user_text_import_history 中 unite_bookid 包含该 book_id 的记录
-    // unite_bookid 为逗号分隔的多个 book_id，需精确匹配各种位置
+    // 3. 删除 exchange_card_tags 中该用户该卡池相关的打标记录
+    const deleteExchangeCardTags = (callback) => {
+      const sql = `DELETE FROM exchange_card_tags WHERE account = ? AND (book_id = ? ${cardIds.length > 0 ? `OR card_id IN (${cardIds.map(() => '?').join(',')})` : ''})`;
+      const params = [userAccount, book_id];
+      if (cardIds.length > 0) {
+        params.push(...cardIds);
+      }
+      db.query(sql, params, (err) => callback(err));
+    };
+
+    // 4. 删除 user_text_import_history 中 unite_bookid 包含该 book_id 的记录
     const deleteImportHistory = (callback) => {
       const sql = `DELETE FROM user_text_import_history
         WHERE account = ?
@@ -1175,18 +1188,23 @@ exports.clearUserCardsByBook = (req, res) => {
           error: err,
         });
       }
-      deleteImportHistory((err) => {
+      deleteExchangeCardTags((err) => {
         if (err) {
-          return res.send({
-            status: 500,
-            message: "清空导入历史失败(user_text_import_history)",
-            error: err,
-          });
+          console.error("清空卡池 exchange_card_tags 失败:", err);
         }
-        return res.send({
-          status: 200,
-          message: `已清空卡池 ${book_id} 的所有记录`,
-          clearedCards: cardIds.length,
+        deleteImportHistory((err) => {
+          if (err) {
+            return res.send({
+              status: 500,
+              message: "清空导入历史失败(user_text_import_history)",
+              error: err,
+            });
+          }
+          return res.send({
+            status: 200,
+            message: `已清空卡池 ${book_id} 的所有记录`,
+            clearedCards: cardIds.length,
+          });
         });
       });
     });

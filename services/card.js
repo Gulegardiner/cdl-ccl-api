@@ -1459,5 +1459,83 @@ exports.getExchangeCardTags = (req, res) => {
   });
 };
 
+// 6. 重新分配/更新某张小卡的标签打标记录 (tagAllocations: [{ tagId, exchange_count }])
+exports.updateCardTags = (req, res) => {
+  const { card_id, book_id, tagAllocations } = req.body;
+  if (!card_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 card_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法更新卡片标签关联",
+    });
+  }
+
+  // 先获取卡片的 book_id
+  const getBookIdSql = book_id ? Promise.resolve(book_id) : new Promise((resolve) => {
+    db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, rows) => {
+      if (!err && rows.length > 0) resolve(rows[0].book_id);
+      else resolve('');
+    });
+  });
+
+  getBookIdSql.then((bId) => {
+    // 1. 删除该用户对该卡片原有的所有标签关联
+    const deleteSql = "DELETE FROM exchange_card_tags WHERE account = ? AND card_id = ?";
+    db.query(deleteSql, [userAccount, card_id], (deleteErr) => {
+      if (deleteErr) {
+        return res.send({
+          status: 500,
+          message: "清除旧标签关联失败",
+          error: deleteErr,
+        });
+      }
+
+      // 过滤出 exchange_count > 0 的有效分配
+      const validAllocations = Array.isArray(tagAllocations)
+        ? tagAllocations.filter((item) => item.tagId && Number(item.exchange_count) > 0)
+        : [];
+
+      if (validAllocations.length === 0) {
+        return res.send({
+          status: 200,
+          message: "更新卡片标签成功（已清空标签）",
+        });
+      }
+
+      const now = new Date();
+      const insertSql = "INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES ?";
+      const values = validAllocations.map((item) => [
+        item.tagId,
+        userAccount,
+        bId || '',
+        card_id,
+        Number(item.exchange_count),
+        now,
+      ]);
+
+      db.query(insertSql, [values], (insertErr) => {
+        if (insertErr) {
+          return res.send({
+            status: 500,
+            message: "写入新标签关联失败",
+            error: insertErr,
+          });
+        }
+        return res.send({
+          status: 200,
+          message: "更新卡片标签成功",
+        });
+      });
+    });
+  });
+};
+
 
 

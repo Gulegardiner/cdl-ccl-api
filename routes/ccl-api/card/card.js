@@ -59,6 +59,7 @@ router.post("/getTagList", cardHandler.getTagList);
 router.post("/updateTag", cardHandler.updateTag);
 router.post("/deleteTag", cardHandler.deleteTag);
 router.post("/getExchangeCardTags", cardHandler.getExchangeCardTags);
+router.post("/updateCardTags", cardHandler.updateCardTags);
 
 module.exports = router;
 

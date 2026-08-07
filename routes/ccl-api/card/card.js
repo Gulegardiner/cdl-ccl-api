@@ -53,6 +53,12 @@ router.post("/clearUserCards", cardHandler.clearUserCards);
 // 清空当前用户指定卡池的点亮记录、收换卡记录及导入历史
 router.post("/clearUserCardsByBook", cardHandler.clearUserCardsByBook);
 
+// 标签相关接口
+router.post("/createTag", cardHandler.createTag);
+router.post("/getTagList", cardHandler.getTagList);
+router.post("/updateTag", cardHandler.updateTag);
+router.post("/deleteTag", cardHandler.deleteTag);
+router.post("/getExchangeCardTags", cardHandler.getExchangeCardTags);
 
 module.exports = router;
 

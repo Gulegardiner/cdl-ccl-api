@@ -605,7 +605,7 @@ exports.getUserCardList = (req, res) => {
 
 // 直接更新或新增卡片拥有数
 exports.updateUserCard = (req, res) => {
-  const { card_id, owned_count, reason } = req.body;
+  const { card_id, owned_count, reason, tagId, book_id } = req.body;
   if (!card_id || owned_count === undefined) {
     return res.send({
       status: 400,
@@ -621,6 +621,29 @@ exports.updateUserCard = (req, res) => {
     });
   }
 
+  // 辅助保存换出标签记录
+  const saveExchangeTagRecord = (exCount, cardBookId) => {
+    if (!tagId || exCount <= 0) return;
+    // 查询卡片的 book_id（若前端未传）
+    const getBookIdSql = cardBookId ? Promise.resolve(cardBookId) : new Promise((resolve) => {
+      db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, rows) => {
+        if (!err && rows.length > 0) resolve(rows[0].book_id);
+        else resolve('');
+      });
+    });
+
+    getBookIdSql.then((bId) => {
+      const now = new Date();
+      const insertTagRecordSql = `
+        INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `;
+      db.query(insertTagRecordSql, [tagId, userAccount, bId || '', card_id, exCount, now], (err) => {
+        if (err) console.error("写入 exchange_card_tags 失败:", err);
+      });
+    });
+  };
+
   const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
   db.query(checkSql, [userAccount, card_id], (err, results) => {
     if (err) return res.cc(err);
@@ -631,6 +654,7 @@ exports.updateUserCard = (req, res) => {
       const current_already_changed = results[0].already_changed || 0;
       let new_un_want = current_un_want;
       let new_already_changed = current_already_changed;
+      let exDiff = 0;
       if (owned_count < old_owned_count) {
         const diff = old_owned_count - owned_count;
         if (reason === 'correction') {
@@ -640,11 +664,15 @@ exports.updateUserCard = (req, res) => {
         } else {
           new_un_want = Math.max(0, current_un_want - diff);
           new_already_changed = current_already_changed + diff;
+          exDiff = diff;
         }
       }
       const updateSql = "UPDATE user_cards SET owned_count = ?, un_want = ?, already_changed = ?, updated_at = ? WHERE account = ? AND card_id = ?";
       db.query(updateSql, [owned_count, new_un_want, new_already_changed, now, userAccount, card_id], (err, result) => {
         if (err) return res.cc(err);
+        if (exDiff > 0) {
+          saveExchangeTagRecord(exDiff, book_id);
+        }
         return res.send({
           status: 200,
           message: "更新卡片拥有数量成功",
@@ -715,7 +743,7 @@ exports.litCard = (req, res) => {
 
 // 取消点亮卡片
 exports.unlitCard = (req, res) => {
-  const { card_id, reason } = req.body;
+  const { card_id, reason, tagId, book_id } = req.body;
   if (!card_id) {
     return res.send({
       status: 400,
@@ -731,6 +759,27 @@ exports.unlitCard = (req, res) => {
     });
   }
 
+  const saveExchangeTagRecord = (exCount, cardBookId) => {
+    if (!tagId || exCount <= 0) return;
+    const getBookIdSql = cardBookId ? Promise.resolve(cardBookId) : new Promise((resolve) => {
+      db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, rows) => {
+        if (!err && rows.length > 0) resolve(rows[0].book_id);
+        else resolve('');
+      });
+    });
+
+    getBookIdSql.then((bId) => {
+      const now = new Date();
+      const insertTagRecordSql = `
+        INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `;
+      db.query(insertTagRecordSql, [tagId, userAccount, bId || '', card_id, exCount, now], (err) => {
+        if (err) console.error("写入 exchange_card_tags 失败:", err);
+      });
+    });
+  };
+
   const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
   db.query(checkSql, [userAccount, card_id], (err, results) => {
     if (err) return res.cc(err);
@@ -741,17 +790,22 @@ exports.unlitCard = (req, res) => {
       const current_already_changed = results[0].already_changed || 0;
       let new_un_want = current_un_want;
       let new_already_changed = current_already_changed;
+      let exDiff = 0;
       if (0 < old_owned_count) {
         const diff = old_owned_count;
         const dec_un_want = Math.min(diff, current_un_want);
         new_un_want = current_un_want - dec_un_want;
         if (reason !== 'correction') {
           new_already_changed = current_already_changed + diff;
+          exDiff = diff;
         }
       }
       const updateSql = "UPDATE user_cards SET owned_count = 0, un_want = ?, already_changed = ?, updated_at = ? WHERE account = ? AND card_id = ?";
       db.query(updateSql, [new_un_want, new_already_changed, now, userAccount, card_id], (err, result) => {
         if (err) return res.cc(err);
+        if (exDiff > 0) {
+          saveExchangeTagRecord(exDiff, book_id);
+        }
         return res.send({
           status: 200,
           message: "取消点亮成功",
@@ -1138,5 +1192,198 @@ exports.clearUserCardsByBook = (req, res) => {
     });
   });
 };
+
+// ===== 标签 (Tags) 规范接口实现 =====
+
+// 1. 创建标签
+exports.createTag = (req, res) => {
+  const { tagName } = req.body;
+  if (!tagName || !tagName.trim()) {
+    return res.send({
+      status: 400,
+      message: "标签名称不能为空",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法创建标签",
+    });
+  }
+
+  const tagId = `${userAccount}_${Date.now()}`;
+  const now = new Date();
+
+  const sql = "INSERT INTO tags (tagId, tagName, create_account, create_time) VALUES (?, ?, ?, ?)";
+  db.query(sql, [tagId, tagName.trim(), userAccount, now], (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "创建标签失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "创建标签成功",
+      data: {
+        tagId,
+        tagName: tagName.trim(),
+        create_account: userAccount,
+        create_time: now,
+      },
+    });
+  });
+};
+
+// 2. 获取当前用户标签列表（包含已换出卡片总张数统计）
+exports.getTagList = (req, res) => {
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法获取标签列表",
+    });
+  }
+
+  const sql = `
+    SELECT 
+      t.tagId, 
+      t.tagName, 
+      t.create_account, 
+      t.create_time,
+      COALESCE(SUM(ect.exchange_count), 0) AS total_exchange_count,
+      COUNT(DISTINCT ect.card_id) AS total_card_types
+    FROM tags t
+    LEFT JOIN exchange_card_tags ect ON t.tagId = ect.tagId AND ect.account = ?
+    WHERE t.create_account = ?
+    GROUP BY t.tagId, t.tagName, t.create_account, t.create_time
+    ORDER BY t.create_time DESC
+  `;
+
+  db.query(sql, [userAccount, userAccount], (err, results) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "获取标签列表失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "获取标签列表成功",
+      data: results,
+    });
+  });
+};
+
+// 3. 修改标签名称 (使用 tagId 操作)
+exports.updateTag = (req, res) => {
+  const { tagId, tagName } = req.body;
+  if (!tagId || !tagName || !tagName.trim()) {
+    return res.send({
+      status: 400,
+      message: "缺少 tagId 或 tagName 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法更新标签",
+    });
+  }
+
+  const sql = "UPDATE tags SET tagName = ? WHERE tagId = ? AND create_account = ?";
+  db.query(sql, [tagName.trim(), tagId, userAccount], (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "更新标签失败",
+        error: err,
+      });
+    }
+    if (result.affectedRows === 0) {
+      return res.send({
+        status: 404,
+        message: "未找到对应的标签或无权限修改",
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "修改标签成功",
+    });
+  });
+};
+
+// 4. 删除标签 (使用 tagId 操作，同时删除 exchange_card_tags 中的关联记录)
+exports.deleteTag = (req, res) => {
+  const { tagId } = req.body;
+  if (!tagId) {
+    return res.send({
+      status: 400,
+      message: "缺少 tagId 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法删除标签",
+    });
+  }
+
+  const deleteTagSql = "DELETE FROM tags WHERE tagId = ? AND create_account = ?";
+  db.query(deleteTagSql, [tagId, userAccount], (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "删除标签失败",
+        error: err,
+      });
+    }
+
+    // 清理 exchange_card_tags 关联关系
+    const deleteRelationSql = "DELETE FROM exchange_card_tags WHERE tagId = ? AND account = ?";
+    db.query(deleteRelationSql, [tagId, userAccount], () => {});
+
+    return res.send({
+      status: 200,
+      message: "删除标签成功",
+    });
+  });
+};
+
+// 5. 获取换出卡片的标签关联列表
+exports.getExchangeCardTags = (req, res) => {
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法获取换出卡片标签关联",
+    });
+  }
+
+  const sql = "SELECT * FROM exchange_card_tags WHERE account = ?";
+  db.query(sql, [userAccount], (err, results) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "查询换出卡片标签关联失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "查询换出卡片标签关联成功",
+      data: results,
+    });
+  });
+};
+
 
 

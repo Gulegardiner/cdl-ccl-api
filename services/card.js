@@ -1206,9 +1206,9 @@ function parseBookIds(book_id) {
     .filter(Boolean);
 }
 
-// 1. 创建标签（接收 book_id，如果包含多个则保存第一个或处理）
+// 1. 创建标签（接收 book_id，如果包含多个则保存第一个或处理；支持 color 字段）
 exports.createTag = (req, res) => {
-  const { tagName, book_id } = req.body;
+  const { tagName, book_id, color } = req.body;
   if (!tagName || !tagName.trim()) {
     return res.send({
       status: 400,
@@ -1224,12 +1224,33 @@ exports.createTag = (req, res) => {
     });
   }
 
+  const presets = [
+    'magenta',
+    'red',
+    'volcano',
+    'orange',
+    'gold',
+    'lime',
+    'green',
+    'cyan',
+    'blue',
+    'geekblue',
+    'purple',
+  ];
+
+  let tagColor = color;
+  if (!tagColor || !tagColor.trim()) {
+    tagColor = presets[Math.floor(Math.random() * presets.length)];
+  } else {
+    tagColor = tagColor.trim();
+  }
+
   const tagId = `${userAccount}_${Date.now()}`;
   const now = new Date();
   const bookIdVal = book_id ? String(book_id).trim() : null;
 
-  const sql = "INSERT INTO tags (tagId, tagName, create_account, book_id, create_time) VALUES (?, ?, ?, ?, ?)";
-  db.query(sql, [tagId, tagName.trim(), userAccount, bookIdVal, now], (err, result) => {
+  const sql = "INSERT INTO tags (tagId, tagName, color, create_account, book_id, create_time) VALUES (?, ?, ?, ?, ?, ?)";
+  db.query(sql, [tagId, tagName.trim(), tagColor, userAccount, bookIdVal, now], (err, result) => {
     if (err) {
       return res.send({
         status: 500,
@@ -1243,6 +1264,7 @@ exports.createTag = (req, res) => {
       data: {
         tagId,
         tagName: tagName.trim(),
+        color: tagColor,
         create_account: userAccount,
         book_id: bookIdVal,
         create_time: now,
@@ -1279,6 +1301,7 @@ exports.getTagList = (req, res) => {
     SELECT 
       t.tagId, 
       t.tagName, 
+      t.color,
       t.create_account, 
       t.book_id,
       t.create_time,
@@ -1287,7 +1310,7 @@ exports.getTagList = (req, res) => {
     FROM tags t
     LEFT JOIN exchange_card_tags ect ON t.tagId = ect.tagId AND ect.account = ?
     WHERE t.create_account = ?${bookFilterSql}
-    GROUP BY t.tagId, t.tagName, t.create_account, t.book_id, t.create_time
+    GROUP BY t.tagId, t.tagName, t.color, t.create_account, t.book_id, t.create_time
     ORDER BY t.create_time DESC
   `;
 
@@ -1307,9 +1330,9 @@ exports.getTagList = (req, res) => {
   });
 };
 
-// 3. 修改标签名称 (使用 tagId 操作)
+// 3. 修改标签名称与颜色 (使用 tagId 操作)
 exports.updateTag = (req, res) => {
-  const { tagId, tagName } = req.body;
+  const { tagId, tagName, color } = req.body;
   if (!tagId || !tagName || !tagName.trim()) {
     return res.send({
       status: 400,
@@ -1325,8 +1348,18 @@ exports.updateTag = (req, res) => {
     });
   }
 
-  const sql = "UPDATE tags SET tagName = ? WHERE tagId = ? AND create_account = ?";
-  db.query(sql, [tagName.trim(), tagId, userAccount], (err, result) => {
+  const updateFields = ["tagName = ?"];
+  const queryParams = [tagName.trim()];
+
+  if (color !== undefined) {
+    updateFields.push("color = ?");
+    queryParams.push(color ? color.trim() : null);
+  }
+
+  queryParams.push(tagId, userAccount);
+
+  const sql = `UPDATE tags SET ${updateFields.join(", ")} WHERE tagId = ? AND create_account = ?`;
+  db.query(sql, queryParams, (err, result) => {
     if (err) {
       return res.send({
         status: 500,

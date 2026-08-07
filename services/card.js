@@ -1195,9 +1195,20 @@ exports.clearUserCardsByBook = (req, res) => {
 
 // ===== 标签 (Tags) 规范接口实现 =====
 
-// 1. 创建标签
+// ===== 标签 (Tags) 规范接口实现 =====
+
+// 辅助函数：处理逗号分隔的 book_id 逻辑
+function parseBookIds(book_id) {
+  if (!book_id) return [];
+  return String(book_id)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// 1. 创建标签（接收 book_id，如果包含多个则保存第一个或处理）
 exports.createTag = (req, res) => {
-  const { tagName } = req.body;
+  const { tagName, book_id } = req.body;
   if (!tagName || !tagName.trim()) {
     return res.send({
       status: 400,
@@ -1215,9 +1226,10 @@ exports.createTag = (req, res) => {
 
   const tagId = `${userAccount}_${Date.now()}`;
   const now = new Date();
+  const bookIdVal = book_id ? String(book_id).trim() : null;
 
-  const sql = "INSERT INTO tags (tagId, tagName, create_account, create_time) VALUES (?, ?, ?, ?)";
-  db.query(sql, [tagId, tagName.trim(), userAccount, now], (err, result) => {
+  const sql = "INSERT INTO tags (tagId, tagName, create_account, book_id, create_time) VALUES (?, ?, ?, ?, ?)";
+  db.query(sql, [tagId, tagName.trim(), userAccount, bookIdVal, now], (err, result) => {
     if (err) {
       return res.send({
         status: 500,
@@ -1232,14 +1244,16 @@ exports.createTag = (req, res) => {
         tagId,
         tagName: tagName.trim(),
         create_account: userAccount,
+        book_id: bookIdVal,
         create_time: now,
       },
     });
   });
 };
 
-// 2. 获取当前用户标签列表（包含已换出卡片总张数统计）
+// 2. 获取当前用户标签列表（可根据 book_id 过滤，支持逗号分隔多个 book_id，包含已换出卡片总张数统计）
 exports.getTagList = (req, res) => {
+  const { book_id } = req.body;
   const userAccount = getAccountFromRequest(req);
   if (!userAccount) {
     return res.send({
@@ -1248,22 +1262,36 @@ exports.getTagList = (req, res) => {
     });
   }
 
+  const bookIds = parseBookIds(book_id);
+  let bookFilterSql = "";
+  const queryParams = [userAccount, userAccount];
+
+  if (bookIds.length === 1) {
+    bookFilterSql = " AND (t.book_id = ? OR FIND_IN_SET(?, t.book_id) > 0)";
+    queryParams.push(bookIds[0], bookIds[0]);
+  } else if (bookIds.length > 1) {
+    const conditions = bookIds.map(() => "(t.book_id = ? OR FIND_IN_SET(?, t.book_id) > 0)").join(" OR ");
+    bookFilterSql = ` AND (${conditions})`;
+    bookIds.forEach((bId) => queryParams.push(bId, bId));
+  }
+
   const sql = `
     SELECT 
       t.tagId, 
       t.tagName, 
       t.create_account, 
+      t.book_id,
       t.create_time,
       COALESCE(SUM(ect.exchange_count), 0) AS total_exchange_count,
       COUNT(DISTINCT ect.card_id) AS total_card_types
     FROM tags t
     LEFT JOIN exchange_card_tags ect ON t.tagId = ect.tagId AND ect.account = ?
-    WHERE t.create_account = ?
-    GROUP BY t.tagId, t.tagName, t.create_account, t.create_time
+    WHERE t.create_account = ?${bookFilterSql}
+    GROUP BY t.tagId, t.tagName, t.create_account, t.book_id, t.create_time
     ORDER BY t.create_time DESC
   `;
 
-  db.query(sql, [userAccount, userAccount], (err, results) => {
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.send({
         status: 500,
@@ -1358,8 +1386,9 @@ exports.deleteTag = (req, res) => {
   });
 };
 
-// 5. 获取换出卡片的标签关联列表
+// 5. 获取换出卡片的标签关联列表（可根据 book_id 过滤，支持逗号分隔多个 book_id）
 exports.getExchangeCardTags = (req, res) => {
+  const { book_id } = req.body;
   const userAccount = getAccountFromRequest(req);
   if (!userAccount) {
     return res.send({
@@ -1368,8 +1397,20 @@ exports.getExchangeCardTags = (req, res) => {
     });
   }
 
-  const sql = "SELECT * FROM exchange_card_tags WHERE account = ?";
-  db.query(sql, [userAccount], (err, results) => {
+  const bookIds = parseBookIds(book_id);
+  let sql = "SELECT * FROM exchange_card_tags WHERE account = ?";
+  const queryParams = [userAccount];
+
+  if (bookIds.length === 1) {
+    sql += " AND book_id = ?";
+    queryParams.push(bookIds[0]);
+  } else if (bookIds.length > 1) {
+    const placeholders = bookIds.map(() => "?").join(",");
+    sql += ` AND book_id IN (${placeholders})`;
+    queryParams.push(...bookIds);
+  }
+
+  db.query(sql, queryParams, (err, results) => {
     if (err) {
       return res.send({
         status: 500,

@@ -1224,9 +1224,9 @@ function parseBookIds(book_id) {
     .filter(Boolean);
 }
 
-// 1. 创建标签（接收 book_id，如果包含多个则保存第一个或处理；支持 color 字段）
+// 1. 创建标签（接收 book_id，如果包含多个则保存第一个或处理；支持 color 和 is_universal 字段）
 exports.createTag = (req, res) => {
-  const { tagName, book_id, color } = req.body;
+  const { tagName, book_id, color, is_universal } = req.body;
   if (!tagName || !tagName.trim()) {
     return res.send({
       status: 400,
@@ -1266,9 +1266,10 @@ exports.createTag = (req, res) => {
   const tagId = `${userAccount}_${Date.now()}`;
   const now = new Date();
   const bookIdVal = book_id ? String(book_id).trim() : null;
+  const isUniversalVal = is_universal ? 1 : 0;
 
-  const sql = "INSERT INTO tags (tagId, tagName, color, create_account, book_id, create_time) VALUES (?, ?, ?, ?, ?, ?)";
-  db.query(sql, [tagId, tagName.trim(), tagColor, userAccount, bookIdVal, now], (err, result) => {
+  const sql = "INSERT INTO tags (tagId, tagName, color, create_account, book_id, create_time, is_universal) VALUES (?, ?, ?, ?, ?, ?, ?)";
+  db.query(sql, [tagId, tagName.trim(), tagColor, userAccount, bookIdVal, now, isUniversalVal], (err, result) => {
     if (err) {
       return res.send({
         status: 500,
@@ -1286,12 +1287,13 @@ exports.createTag = (req, res) => {
         create_account: userAccount,
         book_id: bookIdVal,
         create_time: now,
+        is_universal: isUniversalVal,
       },
     });
   });
 };
 
-// 2. 获取当前用户标签列表（可根据 book_id 过滤，支持逗号分隔多个 book_id，包含已换出卡片总张数统计）
+// 2. 获取当前用户标签列表（可根据 book_id 过滤，支持逗号分隔多个 book_id，包含已换出卡片总张数统计，包含通用标签）
 exports.getTagList = (req, res) => {
   const { book_id } = req.body;
   const userAccount = getAccountFromRequest(req);
@@ -1307,11 +1309,11 @@ exports.getTagList = (req, res) => {
   const queryParams = [userAccount, userAccount];
 
   if (bookIds.length === 1) {
-    bookFilterSql = " AND (t.book_id = ? OR FIND_IN_SET(?, t.book_id) > 0)";
+    bookFilterSql = " AND (t.is_universal = 1 OR t.book_id = ? OR FIND_IN_SET(?, t.book_id) > 0)";
     queryParams.push(bookIds[0], bookIds[0]);
   } else if (bookIds.length > 1) {
     const conditions = bookIds.map(() => "(t.book_id = ? OR FIND_IN_SET(?, t.book_id) > 0)").join(" OR ");
-    bookFilterSql = ` AND (${conditions})`;
+    bookFilterSql = ` AND (t.is_universal = 1 OR ${conditions})`;
     bookIds.forEach((bId) => queryParams.push(bId, bId));
   }
 
@@ -1323,12 +1325,13 @@ exports.getTagList = (req, res) => {
       t.create_account, 
       t.book_id,
       t.create_time,
+      t.is_universal,
       COALESCE(SUM(ect.exchange_count), 0) AS total_exchange_count,
       COUNT(DISTINCT ect.card_id) AS total_card_types
     FROM tags t
     LEFT JOIN exchange_card_tags ect ON t.tagId = ect.tagId AND ect.account = ?
     WHERE t.create_account = ?${bookFilterSql}
-    GROUP BY t.tagId, t.tagName, t.color, t.create_account, t.book_id, t.create_time
+    GROUP BY t.tagId, t.tagName, t.color, t.create_account, t.book_id, t.create_time, t.is_universal
     ORDER BY t.create_time DESC
   `;
 
@@ -1348,9 +1351,9 @@ exports.getTagList = (req, res) => {
   });
 };
 
-// 3. 修改标签名称与颜色 (使用 tagId 操作)
+// 3. 修改标签名称、颜色与通用标志 (使用 tagId 操作)
 exports.updateTag = (req, res) => {
-  const { tagId, tagName, color } = req.body;
+  const { tagId, tagName, color, is_universal } = req.body;
   if (!tagId || !tagName || !tagName.trim()) {
     return res.send({
       status: 400,
@@ -1366,34 +1369,88 @@ exports.updateTag = (req, res) => {
     });
   }
 
-  const updateFields = ["tagName = ?"];
-  const queryParams = [tagName.trim()];
-
-  if (color !== undefined) {
-    updateFields.push("color = ?");
-    queryParams.push(color ? color.trim() : null);
-  }
-
-  queryParams.push(tagId, userAccount);
-
-  const sql = `UPDATE tags SET ${updateFields.join(", ")} WHERE tagId = ? AND create_account = ?`;
-  db.query(sql, queryParams, (err, result) => {
-    if (err) {
-      return res.send({
-        status: 500,
-        message: "更新标签失败",
-        error: err,
-      });
-    }
-    if (result.affectedRows === 0) {
+  // 先查询原标签信息
+  db.query("SELECT book_id, is_universal FROM tags WHERE tagId = ? AND create_account = ?", [tagId, userAccount], (findErr, findRows) => {
+    if (findErr || findRows.length === 0) {
       return res.send({
         status: 404,
         message: "未找到对应的标签或无权限修改",
       });
     }
-    return res.send({
-      status: 200,
-      message: "修改标签成功",
+
+    const oldTag = findRows[0];
+    const oldIsUniversal = oldTag.is_universal;
+    const creatorBookId = oldTag.book_id;
+
+    const updateFields = ["tagName = ?"];
+    const queryParams = [tagName.trim()];
+
+    if (color !== undefined) {
+      updateFields.push("color = ?");
+      queryParams.push(color ? color.trim() : null);
+    }
+
+    if (is_universal !== undefined) {
+      updateFields.push("is_universal = ?");
+      queryParams.push(is_universal ? 1 : 0);
+    }
+
+    queryParams.push(tagId, userAccount);
+
+    const sql = `UPDATE tags SET ${updateFields.join(", ")} WHERE tagId = ? AND create_account = ?`;
+    db.query(sql, queryParams, (err, result) => {
+      if (err) {
+        return res.send({
+          status: 500,
+          message: "更新标签失败",
+          error: err,
+        });
+      }
+      if (result.affectedRows === 0) {
+        return res.send({
+          status: 404,
+          message: "未找到对应的标签或无权限修改",
+        });
+      }
+
+      // 如果由通用标签 (is_universal = 1) 改为了私有标签 (is_universal = 0)，
+      // 且标签有指定的创立者 book_id，则将非该创立者合集卡池（包含其下所有细分卡池）下的关联记录清理
+      if (oldIsUniversal === 1 && is_universal === 0 && creatorBookId) {
+        // creatorBookId 可能是单个 book_id，也可能是逗号分隔的多个 book_id (如: "book_1,book_2")
+        const creatorBookIds = String(creatorBookId)
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean);
+
+        if (creatorBookIds.length > 0) {
+          const inPlaceholders = creatorBookIds.map(() => "?").join(",");
+          const findBooksSql = `SELECT book_id FROM unite_books WHERE unite_bookid IN (${inPlaceholders}) UNION SELECT book_id FROM books WHERE unite_bookid IN (${inPlaceholders})`;
+          const queryParams = [...creatorBookIds, ...creatorBookIds];
+
+          db.query(findBooksSql, queryParams, (bErr, bRows) => {
+            let validBookIds = [...creatorBookIds];
+            if (!bErr && bRows && bRows.length > 0) {
+              const ids = bRows.map((r) => r.book_id).filter(Boolean);
+              if (ids.length > 0) {
+                validBookIds = Array.from(new Set([...validBookIds, ...ids]));
+              }
+            }
+
+            const placeholders = validBookIds.map(() => "?").join(",");
+            const cleanSql = `DELETE FROM exchange_card_tags WHERE tagId = ? AND account = ? AND book_id NOT IN (${placeholders})`;
+            db.query(cleanSql, [tagId, userAccount, ...validBookIds], (cleanErr) => {
+              if (cleanErr) {
+                console.error("清理跨卡池标签关联失败:", cleanErr);
+              }
+            });
+          });
+        }
+      }
+
+      return res.send({
+        status: 200,
+        message: "修改标签成功",
+      });
     });
   });
 };

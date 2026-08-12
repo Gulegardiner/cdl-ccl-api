@@ -11,7 +11,7 @@ try {
 }
 
 // 允许的上传文件夹白名单
-const ALLOWED_FOLDERS = ["cards", "covers"];
+const ALLOWED_FOLDERS = ["cards", "covers", "avatars"];
 
 // 使用内存存储，避免 destination 回调中 req.body 尚未解析的问题
 const upload = multer({ storage: multer.memoryStorage() });
@@ -41,7 +41,7 @@ exports.uploadImage = [
     if (!folder || !ALLOWED_FOLDERS.includes(folder)) {
       return res.send({
         status: 400,
-        message: "无效的 folder 参数，必须为 cards 或 covers",
+        message: "无效的 folder 参数，必须为 cards, covers 或 avatars",
       });
     }
 

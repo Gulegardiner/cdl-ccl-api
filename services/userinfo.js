@@ -6,41 +6,34 @@ const crypto = require("crypto");
 // 导入fs处理文件路径
 const fs = require("fs");
 
-// 上传头像
+// 上传头像（兼容旧路由，推荐使用 upload/uploadImage）
 exports.uploadAvatar = (req, res) => {
   const onlyId = crypto.randomUUID();
-  let oldName = req.files[0].filename;
-  let newName = Buffer.from(req.files[0].originalname, "latin1").toString("utf8");
-  // 更换名字
-  const avatarDir = path.resolve(__dirname, "../public/uploads/avatars/");
-  fs.renameSync(
-    path.join(avatarDir, oldName),
-    path.join(avatarDir, newName)
-  );
-  // 插到images表里
-  const sql = "insert into images set ?";
-  db.query(
-    sql,
-    {
-      image_url: newName,
-      onlyId,
-    },
-    (err, result) => {
-      if (err) return res.cc(err);
-      res.send({
-        onlyId,
-        status: 200,
-        url: newName,
-      });
-    }
-  );
+  let oldName = req.files?.[0]?.filename;
+  let newName = req.files?.[0]?.originalname
+    ? Buffer.from(req.files[0].originalname, "latin1").toString("utf8")
+    : `${onlyId}.webp`;
+  const urlPath = `/uploads/avatars/${newName}`;
+  res.send({
+    onlyId,
+    status: 200,
+    url: urlPath,
+    image_url: urlPath,
+  });
 };
 
-// 绑定账号
+// 绑定账号头像
 exports.bindAccount = (req, res) => {
-  const { account, onlyId, url } = req.body;
-  const sql1 = "update users set image_url = ? where account = ?";
-  db.query(sql1, [url, account], (err, result) => {
+  const { account, url, image_url } = req.body;
+  const targetUrl = image_url || url;
+  if (!account || !targetUrl) {
+    return res.send({
+      status: 400,
+      message: "缺少必要参数 account 或 url",
+    });
+  }
+  const sql = "update users set image_url = ? where account = ?";
+  db.query(sql, [targetUrl, account], (err, result) => {
     if (err) return res.cc(err);
     res.send({
       status: 200,

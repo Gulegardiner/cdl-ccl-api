@@ -60,6 +60,7 @@ router.post("/updateTag", cardHandler.updateTag);
 router.post("/deleteTag", cardHandler.deleteTag);
 router.post("/getExchangeCardTags", cardHandler.getExchangeCardTags);
 router.post("/updateCardTags", cardHandler.updateCardTags);
+router.post("/updateAlreadyChangedCards", cardHandler.updateAlreadyChangedCards);
 
 module.exports = router;
 

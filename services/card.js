@@ -1612,5 +1612,132 @@ exports.updateCardTags = (req, res) => {
   });
 };
 
+// 7. 更新已换出小卡数量（支持在全部、未打标、特定标签下进行数量修正）
+exports.updateAlreadyChangedCards = async (req, res) => {
+  const { book_id, tagId, updates } = req.body;
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法更新已换出小卡数据",
+    });
+  }
+
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.send({
+      status: 200,
+      message: "没有需要更新的已换出卡片",
+    });
+  }
+
+  const isSpecificTag = tagId && tagId !== "ALL" && tagId !== "UNTAGGED";
+  const now = Date.now();
+  const nowDate = new Date();
+
+  try {
+    const promises = updates.map((item) => {
+      const card_id = item.card_id;
+      const diff = Number(item.diff) || 0;
+      const targetCount = Math.max(0, Number(item.targetCount) || 0);
+      const cardBookId = item.book_id || book_id || "";
+
+      if (!card_id || diff === 0) return Promise.resolve();
+
+      return new Promise((resolve, reject) => {
+        // 1. 先更新 user_cards 中的 already_changed 总数
+        const checkUserCardSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+        db.query(checkUserCardSql, [userAccount, card_id], (uErr, uRows) => {
+          if (uErr) return reject(uErr);
+
+          const updateUserCards = new Promise((resUc, rejUc) => {
+            if (uRows && uRows.length > 0) {
+              const currentAlready = uRows[0].already_changed || 0;
+              const newAlready = Math.max(0, currentAlready + diff);
+              const updateSql = "UPDATE user_cards SET already_changed = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+              db.query(updateSql, [newAlready, now, userAccount, card_id], (err) => {
+                if (err) return rejUc(err);
+                resUc();
+              });
+            } else {
+              if (diff > 0) {
+                const insertSql = "INSERT INTO user_cards (account, card_id, owned_count, is_liked, un_want, already_changed, created_at, updated_at) VALUES (?, ?, 0, 0, 0, ?, ?, ?)";
+                db.query(insertSql, [userAccount, card_id, diff, now, now], (err) => {
+                  if (err) return rejUc(err);
+                  resUc();
+                });
+              } else {
+                resUc();
+              }
+            }
+          });
+
+          updateUserCards
+            .then(() => {
+              // 2. 如果是具体自定义标签，同步更新 exchange_card_tags 表
+              if (isSpecificTag) {
+                const checkTagSql = "SELECT * FROM exchange_card_tags WHERE account = ? AND tagId = ? AND card_id = ?";
+                db.query(checkTagSql, [userAccount, tagId, card_id], (tErr, tRows) => {
+                  if (tErr) return reject(tErr);
+
+                  if (targetCount > 0) {
+                    if (tRows && tRows.length > 0) {
+                      const updateTagCountSql = "UPDATE exchange_card_tags SET exchange_count = ? WHERE account = ? AND tagId = ? AND card_id = ?";
+                      db.query(updateTagCountSql, [targetCount, userAccount, tagId, card_id], (err) => {
+                        if (err) return reject(err);
+                        resolve();
+                      });
+                    } else {
+                      // 查询 book_id
+                      const getBookId = cardBookId
+                        ? Promise.resolve(cardBookId)
+                        : new Promise((resB) => {
+                            db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, cRows) => {
+                              if (!err && cRows && cRows.length > 0) resB(cRows[0].book_id);
+                              else resB("");
+                            });
+                          });
+
+                      getBookId.then((bId) => {
+                        const insertTagSql = "INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES (?, ?, ?, ?, ?, ?)";
+                        db.query(insertTagSql, [tagId, userAccount, bId || "", card_id, targetCount, nowDate], (err) => {
+                          if (err) return reject(err);
+                          resolve();
+                        });
+                      });
+                    }
+                  } else {
+                    // targetCount <= 0，删除该标签记录
+                    const deleteTagSql = "DELETE FROM exchange_card_tags WHERE account = ? AND tagId = ? AND card_id = ?";
+                    db.query(deleteTagSql, [userAccount, tagId, card_id], (err) => {
+                      if (err) return reject(err);
+                      resolve();
+                    });
+                  }
+                });
+              } else {
+                resolve();
+              }
+            })
+            .catch(reject);
+        });
+      });
+    });
+
+    await Promise.all(promises);
+    return res.send({
+      status: 200,
+      message: "更新已换出小卡数量成功",
+    });
+  } catch (err) {
+    console.error("更新已换出小卡数量失败:", err);
+    return res.send({
+      status: 500,
+      message: "更新已换出小卡数量失败",
+      error: err,
+    });
+  }
+};
+
+
 
 

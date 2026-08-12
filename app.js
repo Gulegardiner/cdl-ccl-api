@@ -82,6 +82,8 @@ app.use(
       /^\/ccl-api\/card\/getCardList/,
       /^\/ccl-api\/card\/getCardDetail/,
       /^\/ccl-api\/book\/getBookDetail/,
+      /^\/ccl-api\/message\/getMessageList/,
+      /^\/ccl-api\/message\/getMessageDetail/,
     ],
   })
 );
@@ -132,6 +134,10 @@ app.use("/ccl-api/card", cardRouter);
 // 通用上传路由
 const uploadRouter = require("./routes/ccl-api/upload/upload");
 app.use("/ccl-api/upload", uploadRouter);
+
+// 留言板路由
+const messageRouter = require("./routes/ccl-api/message/message");
+app.use("/ccl-api/message", messageRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

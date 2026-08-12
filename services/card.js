@@ -1455,9 +1455,9 @@ exports.updateTag = (req, res) => {
   });
 };
 
-// 4. 删除标签 (使用 tagId 操作，同时删除 exchange_card_tags 中的关联记录)
+// 4. 删除标签 (使用 tagId 操作，接收可选的 book_id 区分创建归属卡池与非归属卡池)
 exports.deleteTag = (req, res) => {
-  const { tagId } = req.body;
+  const { tagId, book_id } = req.body;
   if (!tagId) {
     return res.send({
       status: 400,
@@ -1473,24 +1473,96 @@ exports.deleteTag = (req, res) => {
     });
   }
 
-  const deleteTagSql = "DELETE FROM tags WHERE tagId = ? AND create_account = ?";
-  db.query(deleteTagSql, [tagId, userAccount], (err, result) => {
-    if (err) {
+  // 先查询标签详情
+  const queryTagSql = "SELECT * FROM tags WHERE tagId = ? AND create_account = ?";
+  db.query(queryTagSql, [tagId, userAccount], (findErr, findRows) => {
+    if (findErr) {
       return res.send({
         status: 500,
-        message: "删除标签失败",
-        error: err,
+        message: "查询标签失败",
+        error: findErr,
       });
     }
 
-    // 清理 exchange_card_tags 关联关系
-    const deleteRelationSql = "DELETE FROM exchange_card_tags WHERE tagId = ? AND account = ?";
-    db.query(deleteRelationSql, [tagId, userAccount], () => {});
+    if (!findRows || findRows.length === 0) {
+      return res.send({
+        status: 404,
+        message: "未找到对应的标签或无权限删除",
+      });
+    }
 
-    return res.send({
-      status: 200,
-      message: "删除标签成功",
-    });
+    const tag = findRows[0];
+    const creatorBookId = tag.book_id;
+    const currentBookId = book_id ? String(book_id).trim() : "";
+
+    // 判断是否在创建归属卡池进行删除
+    let isCreatorPool = true;
+    if (currentBookId && creatorBookId) {
+      const creatorIds = parseBookIds(creatorBookId);
+      const currentIds = parseBookIds(currentBookId);
+      const hasOverlap = creatorIds.some((id) => currentIds.includes(id)) || (creatorBookId === currentBookId);
+      if (!hasOverlap) {
+        isCreatorPool = false;
+      }
+    }
+
+    if (!isCreatorPool) {
+      // 非创建归属卡池：只清理当前合集卡池（包含其下所有细分卡池）与该标签在 exchange_card_tags 中的关联记录
+      const currentIds = parseBookIds(currentBookId);
+      const inPlaceholders = currentIds.map(() => "?").join(",");
+      const findBooksSql = `SELECT book_id FROM unite_book WHERE unite_bookid IN (${inPlaceholders}) UNION SELECT book_id FROM books WHERE unite_bookid IN (${inPlaceholders}) OR book_id IN (${inPlaceholders})`;
+      const queryParams = [...currentIds, ...currentIds];
+
+      db.query(findBooksSql, queryParams, (bErr, bRows) => {
+        let validBookIds = [...currentIds];
+        if (!bErr && bRows && bRows.length > 0) {
+          const ids = bRows.map((r) => r.book_id).filter(Boolean);
+          if (ids.length > 0) {
+            validBookIds = Array.from(new Set([...validBookIds, ...ids]));
+          }
+        }
+
+        const placeholders = validBookIds.map(() => "?").join(",");
+        const cleanSql = `DELETE FROM exchange_card_tags WHERE tagId = ? AND account = ? AND (book_id IN (${placeholders}) OR card_id IN (SELECT card_id FROM cards WHERE book_id IN (${placeholders})))`;
+        db.query(cleanSql, [tagId, userAccount, ...validBookIds, ...validBookIds], (cleanErr) => {
+          if (cleanErr) {
+            return res.send({
+              status: 500,
+              message: "移除当前卡池标签关联失败",
+              error: cleanErr,
+            });
+          }
+          return res.send({
+            status: 200,
+            message: "已移除当前卡池的标签关联，小卡已移至未打标",
+          });
+        });
+      });
+    } else {
+      // 创建归属卡池：彻底删除标签并清理所有卡池关联
+      const deleteTagSql = "DELETE FROM tags WHERE tagId = ? AND create_account = ?";
+      db.query(deleteTagSql, [tagId, userAccount], (err, result) => {
+        if (err) {
+          return res.send({
+            status: 500,
+            message: "删除标签失败",
+            error: err,
+          });
+        }
+
+        // 清理 exchange_card_tags 关联关系
+        const deleteRelationSql = "DELETE FROM exchange_card_tags WHERE tagId = ? AND account = ?";
+        db.query(deleteRelationSql, [tagId, userAccount], (delRelErr) => {
+          if (delRelErr) {
+            console.error("清理 exchange_card_tags 关联失败:", delRelErr);
+          }
+          return res.send({
+            status: 200,
+            message: "删除标签成功",
+          });
+        });
+      });
+    }
   });
 };
 

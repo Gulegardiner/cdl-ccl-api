@@ -1652,9 +1652,12 @@ exports.updateAlreadyChangedCards = async (req, res) => {
           const updateUserCards = new Promise((resUc, rejUc) => {
             if (uRows && uRows.length > 0) {
               const currentAlready = uRows[0].already_changed || 0;
+              const currentOwned = uRows[0].owned_count || 0;
               const newAlready = Math.max(0, currentAlready + diff);
-              const updateSql = "UPDATE user_cards SET already_changed = ?, updated_at = ? WHERE account = ? AND card_id = ?";
-              db.query(updateSql, [newAlready, now, userAccount, card_id], (err) => {
+              const actualDeduction = currentAlready - newAlready;
+              const newOwned = actualDeduction > 0 ? currentOwned + actualDeduction : currentOwned;
+              const updateSql = "UPDATE user_cards SET already_changed = ?, owned_count = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+              db.query(updateSql, [newAlready, newOwned, now, userAccount, card_id], (err) => {
                 if (err) return rejUc(err);
                 resUc();
               });

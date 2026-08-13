@@ -144,6 +144,10 @@ app.use("/ccl-api/message", messageRouter);
 const updateLogRouter = require("./routes/ccl-api/updateLog/updateLog");
 app.use("/ccl-api/updateLog", updateLogRouter);
 
+// 用户日志路由
+const userLogRouter = require("./routes/ccl-api/userLog/userLog");
+app.use("/ccl-api/userLog", userLogRouter);
+
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
   next(createError(404));

@@ -61,6 +61,7 @@ router.post("/deleteTag", cardHandler.deleteTag);
 router.post("/getExchangeCardTags", cardHandler.getExchangeCardTags);
 router.post("/updateCardTags", cardHandler.updateCardTags);
 router.post("/updateAlreadyChangedCards", cardHandler.updateAlreadyChangedCards);
+router.post("/updateCardPrice", cardHandler.updateCardPrice);
 
 module.exports = router;
 

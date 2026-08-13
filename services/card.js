@@ -84,9 +84,9 @@ exports.getCardList = (req, res) => {
 
   let sql = "";
   if (userAccount) {
-    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want, COALESCE(uc.already_changed, 0) AS already_changed FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ?";
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want, COALESCE(uc.already_changed, 0) AS already_changed, uc.price_desc FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ?";
   } else {
-    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want, 0 AS already_changed FROM cards c";
+    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want, 0 AS already_changed, NULL AS price_desc FROM cards c";
   }
 
   if (queryConditions.length) {
@@ -144,10 +144,10 @@ exports.getCardDetail = (req, res) => {
   let sql;
   let queryValues;
   if (userAccount) {
-    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want, COALESCE(uc.already_changed, 0) AS already_changed FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ? WHERE c.card_id = ?";
+    sql = "SELECT c.*, COALESCE(uc.owned_count, 0) AS owned_count, COALESCE(uc.is_liked, 0) AS is_liked, COALESCE(uc.un_want, 0) AS un_want, COALESCE(uc.already_changed, 0) AS already_changed, uc.price_desc FROM cards c LEFT JOIN user_cards uc ON c.card_id = uc.card_id AND uc.account = ? WHERE c.card_id = ?";
     queryValues = [userAccount, card_id];
   } else {
-    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want, 0 AS already_changed FROM cards c WHERE c.card_id = ?";
+    sql = "SELECT c.*, 0 AS owned_count, 0 AS is_liked, 0 AS un_want, 0 AS already_changed, NULL AS price_desc FROM cards c WHERE c.card_id = ?";
     queryValues = [card_id];
   }
 
@@ -1811,6 +1811,67 @@ exports.updateAlreadyChangedCards = async (req, res) => {
       error: err,
     });
   }
+};
+
+// 批量更新卡片价格描述
+exports.updateCardPrice = (req, res) => {
+  const { prices } = req.body; // 格式：[{ card_id: 'xxx', price_desc: 'xxx' }]
+  if (!prices || !Array.isArray(prices)) {
+    return res.send({
+      status: 400,
+      message: "缺少 prices 参数或格式不正确",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法标记价格",
+    });
+  }
+
+  const now = Date.now();
+  const promises = prices.map((item) => {
+    const { card_id, price_desc } = item;
+    if (!card_id) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      const checkSql = "SELECT * FROM user_cards WHERE account = ? AND card_id = ?";
+      db.query(checkSql, [userAccount, card_id], (err, results) => {
+        if (err) return reject(err);
+        if (results.length > 0) {
+          const updateSql = "UPDATE user_cards SET price_desc = ?, updated_at = ? WHERE account = ? AND card_id = ?";
+          db.query(updateSql, [price_desc || null, now, userAccount, card_id], (err, result) => {
+            if (err) return reject(err);
+            resolve();
+          });
+        } else {
+          const insertSql = "INSERT INTO user_cards (account, card_id, price_desc, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+          db.query(insertSql, [userAccount, card_id, price_desc || null, now, now], (err, result) => {
+            if (err) return reject(err);
+            resolve();
+          });
+        }
+      });
+    });
+  });
+
+  Promise.all(promises)
+    .then(() => {
+      res.send({
+        status: 200,
+        message: "更新小卡价格成功",
+      });
+    })
+    .catch((err) => {
+      console.error("更新小卡价格失败:", err);
+      res.send({
+        status: 500,
+        message: "更新小卡价格失败",
+        error: err,
+      });
+    });
 };
 
 

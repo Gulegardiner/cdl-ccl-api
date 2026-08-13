@@ -127,6 +127,7 @@ CREATE TABLE `user_cards` (
   `owned_count` int(11) NULL DEFAULT 0 COMMENT '拥有数量',
   `is_liked` int(1) NULL DEFAULT 0 COMMENT '是否喜欢：1喜欢，0默认',
   `un_want` int(1) NULL DEFAULT 0 COMMENT '是否不想要：1不想要，0默认',
+  `price_desc` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '价格描述',
   `created_at` bigint(20) NULL DEFAULT NULL COMMENT '创建时间戳',
   `updated_at` bigint(20) NULL DEFAULT NULL COMMENT '更新时间戳',
   PRIMARY KEY (`id`) USING BTREE,

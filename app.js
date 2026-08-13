@@ -84,6 +84,7 @@ app.use(
       /^\/ccl-api\/book\/getBookDetail/,
       /^\/ccl-api\/message\/getMessageList/,
       /^\/ccl-api\/message\/getMessageDetail/,
+      /^\/ccl-api\/updateLog\/getLogList/,
     ],
   })
 );
@@ -138,6 +139,10 @@ app.use("/ccl-api/upload", uploadRouter);
 // 留言板路由
 const messageRouter = require("./routes/ccl-api/message/message");
 app.use("/ccl-api/message", messageRouter);
+
+// 更新日志路由
+const updateLogRouter = require("./routes/ccl-api/updateLog/updateLog");
+app.use("/ccl-api/updateLog", updateLogRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

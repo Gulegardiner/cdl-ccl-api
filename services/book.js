@@ -189,12 +189,13 @@ exports.updateBook = (req, res) => {
     const book = result[0];
     const userAccount = req.auth ? req.auth.account : null;
     const userIdentity = req.auth ? req.auth.identity : null;
+    const isAdmin = userIdentity === 'admin' || userIdentity === 'superadmin';
 
     // 2. 状态流转越权校验
     if (fields.status && fields.status !== book.status) {
       // 变更为 'pass' (通过发布) 或 从 'pass' 变更为其他状态 (下架操作)，必须是管理员
       const isAuditAction = fields.status === 'pass' || book.status === 'pass';
-      if (isAuditAction && userIdentity !== 'admin') {
+      if (isAuditAction && !isAdmin) {
         return res.send({
           status: 403,
           message: "无权操作：只有管理员可审核/发布卡池",
@@ -204,7 +205,6 @@ exports.updateBook = (req, res) => {
 
     // 3. 普通字段修改校验：必须是创建者本人或管理员
     const isCreator = userAccount && book.creater_account === userAccount;
-    const isAdmin = userIdentity === 'admin';
     if (!isCreator && !isAdmin) {
       return res.send({
         status: 403,
@@ -266,8 +266,9 @@ exports.deleteBook = (req, res) => {
     const book = result[0];
     const userAccount = req.auth ? req.auth.account : null;
     const userIdentity = req.auth ? req.auth.identity : null;
+    const isAdmin = userIdentity === 'admin' || userIdentity === 'superadmin';
 
-    if (book.creater_account !== userAccount && userIdentity !== 'admin') {
+    if (book.creater_account !== userAccount && !isAdmin) {
       return res.send({
         status: 403,
         message: "无权操作：只有创建者或管理员可删除卡池",

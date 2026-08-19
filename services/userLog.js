@@ -80,13 +80,13 @@ exports.getLogList = (req, res) => {
   const offset = (page - 1) * limit;
 
   // 权限鉴权逻辑：
-  // 1. 如果是管理员，查看所有管理员的日志（role = 'admin'）
+  // 1. 如果是管理员或超管，查看所有管理员与超管的日志（role IN ('admin', 'superadmin')）
   // 2. 如果是普通用户，仅查看自己的日志（account = currentUser.account）
   let queryCond = "";
   let queryParams = [];
 
-  if (currentUser.identity === "admin") {
-    queryCond = "role = 'admin'";
+  if (["admin", "superadmin"].includes(currentUser.identity)) {
+    queryCond = "role IN ('admin', 'superadmin')";
   } else {
     queryCond = "account = ?";
     queryParams.push(currentUser.account);

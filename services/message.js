@@ -37,7 +37,7 @@ exports.getMessageList = (req, res) => {
 
   const currentUser = getUserFromRequest(req);
   const currentAccount = currentUser?.account;
-  const isAdmin = currentUser?.identity === "admin";
+  const isAdmin = ["admin", "superadmin"].includes(currentUser?.identity);
 
   const conditions = ["m.status = 1"];
   const params = [];
@@ -175,7 +175,7 @@ exports.getMessageDetail = (req, res) => {
 
   const currentUser = getUserFromRequest(req);
   const currentAccount = currentUser?.account;
-  const isAdmin = currentUser?.identity === "admin";
+  const isAdmin = ["admin", "superadmin"].includes(currentUser?.identity);
 
   const messageSql = `
     SELECT 
@@ -334,7 +334,7 @@ exports.createReply = (req, res) => {
     }
 
     const message = rows[0];
-    const isAdmin = user.identity === "admin";
+    const isAdmin = ["admin", "superadmin"].includes(user?.identity);
 
     // 私密留言只有发帖人和管理员可以回复
     if (message.is_public === 0) {
@@ -378,7 +378,7 @@ exports.createReply = (req, res) => {
 // 5. 置顶 / 取消置顶留言（仅管理员）
 exports.toggleTop = (req, res) => {
   const user = req.auth;
-  if (!user || user.identity !== "admin") {
+  if (!user || !["admin", "superadmin"].includes(user.identity)) {
     return res.send({ status: 403, message: "无权限操作，仅管理员可置顶" });
   }
 
@@ -423,7 +423,7 @@ exports.deleteMessage = (req, res) => {
     }
 
     const message = rows[0];
-    const isAdmin = user.identity === "admin";
+    const isAdmin = ["admin", "superadmin"].includes(user?.identity);
     if (message.account !== user.account && !isAdmin) {
       return res.send({ status: 403, message: "无权限删除此留言" });
     }
@@ -465,7 +465,7 @@ exports.deleteReply = (req, res) => {
     }
 
     const reply = rows[0];
-    const isAdmin = user.identity === "admin";
+    const isAdmin = ["admin", "superadmin"].includes(user?.identity);
     const isReplyOwner = reply.reply_account === user.account;
     const isMessageOwner = reply.message_account === user.account;
 

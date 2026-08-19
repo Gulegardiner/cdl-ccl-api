@@ -92,11 +92,11 @@ exports.getLogList = (req, res) => {
   });
 };
 
-// 2. 创建更新日志（仅管理员）
+// 2. 创建更新日志（仅超级管理员）
 exports.createLog = (req, res) => {
   const currentUser = getUserFromRequest(req);
-  if (!currentUser || currentUser.identity !== "admin") {
-    return res.send({ status: 403, message: "无权限操作，仅管理员可用" });
+  if (!currentUser || currentUser.identity !== "superadmin") {
+    return res.send({ status: 403, message: "无权限操作，仅超级管理员可用" });
   }
 
   const { version, title, content, images } = req.body || {};
@@ -135,11 +135,11 @@ exports.createLog = (req, res) => {
   });
 };
 
-// 3. 删除更新日志（仅管理员）
+// 3. 删除更新日志（仅超级管理员）
 exports.deleteLog = (req, res) => {
   const currentUser = getUserFromRequest(req);
-  if (!currentUser || currentUser.identity !== "admin") {
-    return res.send({ status: 403, message: "无权限操作，仅管理员可用" });
+  if (!currentUser || currentUser.identity !== "superadmin") {
+    return res.send({ status: 403, message: "无权限操作，仅超级管理员可用" });
   }
 
   const { id } = req.body || {};

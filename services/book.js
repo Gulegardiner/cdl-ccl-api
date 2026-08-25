@@ -51,6 +51,9 @@ exports.getBookList = (req, res) => {
     }
     const total = result.length;
 
+    // 按 sort 字段排序：有值的按值升序排列，没有值的排在最后
+    sql += ` ORDER BY CASE WHEN sort IS NULL THEN 1 ELSE 0 END, sort ASC`;
+
     // 分页
     if (page && limit) {
       const offset = (page - 1) * limit;
@@ -294,7 +297,8 @@ exports.deleteBook = (req, res) => {
 
 // 获取合集卡池列表
 exports.getUniteBookList = (req, res) => {
-  const sql = "SELECT * FROM unite_book";
+  // 按 sort 字段排序：有值的按值升序排列，没有值的排在最后
+  const sql = "SELECT * FROM unite_book ORDER BY CASE WHEN sort IS NULL THEN 1 ELSE 0 END, sort ASC";
   db.query(sql, (err, result) => {
     if (err) {
       return res.send({

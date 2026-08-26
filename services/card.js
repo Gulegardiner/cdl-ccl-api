@@ -1108,7 +1108,7 @@ exports.clearUserCards = (req, res) => {
   });
 };
 
-// 清空当前用户指定卡池的点亮记录、收换卡记录以及导入历史记录
+// 清空当前用户指定卡池的点亮记录、收换卡记录以及导入历史记录（支持传入逗号分隔的多个 book_id）
 exports.clearUserCardsByBook = (req, res) => {
   const { book_id } = req.body;
   if (!book_id) {
@@ -1126,9 +1126,23 @@ exports.clearUserCardsByBook = (req, res) => {
     });
   }
 
-  // 1. 先查询该卡池下的所有 card_id
-  const cardIdSql = "SELECT card_id FROM cards WHERE book_id = ?";
-  db.query(cardIdSql, [book_id], (err, cardRows) => {
+  // 解析逗号分隔的多个 book_id
+  const bookIds = String(book_id)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (bookIds.length === 0) {
+    return res.send({
+      status: 400,
+      message: "book_id 参数无效",
+    });
+  }
+
+  // 1. 查询这些卡池下的所有 card_id
+  const bookPlaceholders = bookIds.map(() => '?').join(',');
+  const cardIdSql = `SELECT card_id FROM cards WHERE book_id IN (${bookPlaceholders})`;
+  db.query(cardIdSql, bookIds, (err, cardRows) => {
     if (err) {
       return res.send({
         status: 500,
@@ -1139,7 +1153,7 @@ exports.clearUserCardsByBook = (req, res) => {
 
     const cardIds = cardRows.map(r => r.card_id);
 
-    // 2. 删除 user_cards 中该用户该卡池所有卡的记录（用 IN 批量删）
+    // 2. 删除 user_cards 中该用户这些卡池所有卡的记录
     const deleteUserCards = (callback) => {
       if (cardIds.length === 0) return callback(null);
       const placeholders = cardIds.map(() => '?').join(',');
@@ -1147,37 +1161,38 @@ exports.clearUserCardsByBook = (req, res) => {
       db.query(sql, [userAccount, ...cardIds], (err) => callback(err));
     };
 
-    // 3. 删除 exchange_card_tags 中该用户该卡池相关的打标记录
+    // 3. 删除 exchange_card_tags 中该用户这些卡池相关的打标记录
     const deleteExchangeCardTags = (callback) => {
-      const sql = `DELETE FROM exchange_card_tags WHERE account = ? AND (book_id = ? ${cardIds.length > 0 ? `OR card_id IN (${cardIds.map(() => '?').join(',')})` : ''})`;
-      const params = [userAccount, book_id];
+      const parts = [];
+      const params = [userAccount];
+      if (bookIds.length > 0) {
+        parts.push(`book_id IN (${bookPlaceholders})`);
+        params.push(...bookIds);
+      }
       if (cardIds.length > 0) {
+        const cardPlaceholders = cardIds.map(() => '?').join(',');
+        parts.push(`card_id IN (${cardPlaceholders})`);
         params.push(...cardIds);
       }
+      const sql = `DELETE FROM exchange_card_tags WHERE account = ? AND (${parts.join(' OR ')})`;
       db.query(sql, params, (err) => callback(err));
     };
 
-    // 4. 删除 user_text_import_history 中 unite_bookid 包含该 book_id 的记录
+    // 4. 删除 user_text_import_history 中 unite_bookid 包含这些 book_id 的记录
     const deleteImportHistory = (callback) => {
-      const sql = `DELETE FROM user_text_import_history
-        WHERE account = ?
-        AND (
-          unite_bookid = ?
-          OR unite_bookid LIKE ?
-          OR unite_bookid LIKE ?
-          OR unite_bookid LIKE ?
-        )`;
-      db.query(
-        sql,
-        [
-          userAccount,
-          book_id,
-          `${book_id},%`,    // book_id 在开头
-          `%,${book_id},%`,  // book_id 在中间
-          `%,${book_id}`,    // book_id 在末尾
-        ],
-        (err) => callback(err)
-      );
+      const conditions = [];
+      const params = [userAccount];
+      for (const bid of bookIds) {
+        conditions.push(
+          "unite_bookid = ?",
+          "unite_bookid LIKE ?",
+          "unite_bookid LIKE ?",
+          "unite_bookid LIKE ?"
+        );
+        params.push(bid, `${bid},%`, `%,${bid},%`, `%,${bid}`);
+      }
+      const sql = `DELETE FROM user_text_import_history WHERE account = ? AND (${conditions.join(' OR ')})`;
+      db.query(sql, params, (err) => callback(err));
     };
 
     deleteUserCards((err) => {
@@ -1202,8 +1217,127 @@ exports.clearUserCardsByBook = (req, res) => {
           }
           return res.send({
             status: 200,
-            message: `已清空卡池 ${book_id} 的所有记录`,
+            message: `已清空卡池 ${bookIds.join(',')} 的所有记录`,
             clearedCards: cardIds.length,
+          });
+        });
+      });
+    });
+  });
+};
+
+// 一键点亮：将指定卡池中用户未点亮的小卡设为已点亮（owned_count = 1），已点亮的保持不变
+exports.lightAllCardsByBook = (req, res) => {
+  const { book_id } = req.body;
+  if (!book_id) {
+    return res.send({
+      status: 400,
+      message: "缺少 book_id 参数",
+    });
+  }
+
+  const userAccount = getAccountFromRequest(req);
+  if (!userAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法点亮卡片",
+    });
+  }
+
+  // 解析逗号分隔的多个 book_id
+  const bookIds = String(book_id)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (bookIds.length === 0) {
+    return res.send({
+      status: 400,
+      message: "book_id 参数无效",
+    });
+  }
+
+  // 1. 查询这些卡池下的所有 card_id
+  const bookPlaceholders = bookIds.map(() => '?').join(',');
+  const cardIdSql = `SELECT card_id FROM cards WHERE book_id IN (${bookPlaceholders})`;
+  db.query(cardIdSql, bookIds, (err, cardRows) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "查询卡片列表失败",
+        error: err,
+      });
+    }
+
+    const cardIds = cardRows.map(r => r.card_id);
+    if (cardIds.length === 0) {
+      return res.send({
+        status: 200,
+        message: "指定卡池中没有小卡",
+        litCount: 0,
+      });
+    }
+
+    const now = Date.now();
+    const cardPlaceholders = cardIds.map(() => '?').join(',');
+
+    // 2. 将已有记录但 owned_count = 0 的设为 1（不影响 owned_count > 0 的记录）
+    const updateSql = `UPDATE user_cards SET owned_count = 1, updated_at = ? WHERE account = ? AND owned_count = 0 AND card_id IN (${cardPlaceholders})`;
+    db.query(updateSql, [now, userAccount, ...cardIds], (err, updateResult) => {
+      if (err) {
+        return res.send({
+          status: 500,
+          message: "点亮卡片失败",
+          error: err,
+        });
+      }
+
+      const updatedCount = updateResult.affectedRows || 0;
+
+      // 3. 查询用户在这些卡中已有记录的 card_id（用于排除已有点亮记录的）
+      const existSql = `SELECT card_id FROM user_cards WHERE account = ? AND card_id IN (${cardPlaceholders})`;
+      db.query(existSql, [userAccount, ...cardIds], (err, existRows) => {
+        if (err) {
+          return res.send({
+            status: 500,
+            message: "查询已有记录失败",
+            error: err,
+          });
+        }
+
+        const existCardIds = new Set(existRows.map(r => r.card_id));
+        // 找出还没有 user_cards 记录的 card_id
+        const missingCardIds = cardIds.filter(id => !existCardIds.has(id));
+
+        if (missingCardIds.length === 0) {
+          return res.send({
+            status: 200,
+            message: "一键点亮成功",
+            litCount: updatedCount,
+          });
+        }
+
+        // 4. 批量插入缺失的记录，owned_count = 1
+        const insertValues = missingCardIds.map(() => '(?, ?, 1, ?, ?)').join(', ');
+        const insertParams = [];
+        for (const cid of missingCardIds) {
+          insertParams.push(userAccount, cid, now, now);
+        }
+        const insertSql = `INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES ${insertValues}`;
+        db.query(insertSql, insertParams, (err, insertResult) => {
+          if (err) {
+            return res.send({
+              status: 500,
+              message: "点亮卡片失败(插入记录)",
+              error: err,
+            });
+          }
+
+          const insertedCount = insertResult.affectedRows || 0;
+          return res.send({
+            status: 200,
+            message: "一键点亮成功",
+            litCount: updatedCount + insertedCount,
           });
         });
       });

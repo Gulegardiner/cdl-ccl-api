@@ -195,4 +195,40 @@ CREATE TABLE `update_logs` (
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic COMMENT = '更新日志表';
 
+-- ----------------------------
+-- 收卡状态标签表
+-- ----------------------------
+DROP TABLE IF EXISTS `collect_tags`;
+CREATE TABLE `collect_tags` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tagId` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '标签唯一标识ID',
+  `tagName` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '标签名称',
+  `color` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '标签颜色',
+  `create_account` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '创建者账号',
+  `book_id` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '关联卡池ID（可为逗号分隔多个）',
+  `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
+  `is_universal` int(1) NULL DEFAULT 0 COMMENT '是否通用标签：1通用，0私有',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_tagId` (`tagId`) USING BTREE,
+  KEY `idx_create_account` (`create_account`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic COMMENT = '收卡状态标签表';
+
+-- ----------------------------
+-- 收卡状态卡片标签关联表
+-- ----------------------------
+DROP TABLE IF EXISTS `collect_card_tags`;
+CREATE TABLE `collect_card_tags` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tagId` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '关联的标签ID',
+  `account` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户账号',
+  `book_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '卡池ID',
+  `card_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '卡片ID',
+  `exchange_count` int(11) NULL DEFAULT 0 COMMENT '换出/收卡数量',
+  `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_tagId` (`tagId`) USING BTREE,
+  KEY `idx_account` (`account`) USING BTREE,
+  KEY `idx_card_id` (`card_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic COMMENT = '收卡状态卡片标签关联表';
+
 SET FOREIGN_KEY_CHECKS = 1;

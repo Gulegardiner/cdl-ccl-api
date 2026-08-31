@@ -132,6 +132,10 @@ app.use("/ccl-api/series", seriesRouter);
 const cardRouter = require("./routes/ccl-api/card/card");
 app.use("/ccl-api/card", cardRouter);
 
+// 收卡状态标签路由
+const collectTagRouter = require("./routes/ccl-api/collectTag/collectTag");
+app.use("/ccl-api/collectTag", collectTagRouter);
+
 // 通用上传路由
 const uploadRouter = require("./routes/ccl-api/upload/upload");
 app.use("/ccl-api/upload", uploadRouter);

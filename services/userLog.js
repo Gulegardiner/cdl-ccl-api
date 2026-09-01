@@ -67,6 +67,65 @@ exports.createLog = (req, res) => {
   });
 };
 
+// 3. 删除日志（支持按日期范围、操作类型筛选，或清空全部）
+exports.deleteLog = (req, res) => {
+  const currentUser = getUserFromRequest(req);
+  if (!currentUser) {
+    return res.send({ status: 401, message: "请重新登录" });
+  }
+
+  const { startDate, endDate, action, deleteAll } = req.body || {};
+
+  // 权限判断：管理员/超管可删除所有管理员日志，普通用户只能删除自己的日志
+  let deleteCond = "";
+  let deleteParams = [];
+
+  if (["admin", "superadmin"].includes(currentUser.identity)) {
+    deleteCond = "role IN ('admin', 'superadmin')";
+  } else {
+    deleteCond = "account = ?";
+    deleteParams.push(currentUser.account);
+  }
+
+  // deleteAll 为 true 时，清空该用户权限范围内的所有日志
+  if (deleteAll === true || deleteAll === "true") {
+    // 可选保留 action 筛选
+    if (action && action.trim()) {
+      deleteCond += " AND action = ?";
+      deleteParams.push(action.trim());
+    }
+  } else {
+    // 非清空全部时，日期参数必填
+    if (!startDate || !startDate.trim()) {
+      return res.send({ status: 400, message: "起始日期不能为空" });
+    }
+    if (!endDate || !endDate.trim()) {
+      return res.send({ status: 400, message: "截止日期不能为空" });
+    }
+
+    deleteCond += " AND DATE(create_time) BETWEEN ? AND ?";
+    deleteParams.push(startDate.trim(), endDate.trim());
+
+    // action 为可选参数，传入时按操作类型筛选
+    if (action && action.trim()) {
+      deleteCond += " AND action = ?";
+      deleteParams.push(action.trim());
+    }
+  }
+
+  const sql = `DELETE FROM user_logs WHERE ${deleteCond}`;
+  db.query(sql, deleteParams, (err, result) => {
+    if (err) return res.cc(err);
+    res.send({
+      status: 200,
+      message: "删除日志成功",
+      data: {
+        deleted: result.affectedRows,
+      },
+    });
+  });
+};
+
 // 2. 分页获取用户日志列表
 exports.getLogList = (req, res) => {
   const currentUser = getUserFromRequest(req);

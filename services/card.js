@@ -1487,7 +1487,7 @@ exports.getTagList = (req, res) => {
 
 // 3. 修改标签名称、颜色与通用标志 (使用 tagId 操作)
 exports.updateTag = (req, res) => {
-  const { tagId, tagName, color, is_universal } = req.body;
+  const { tagId, tagName, color, is_universal, book_id } = req.body;
   if (!tagId || !tagName || !tagName.trim()) {
     return res.send({
       status: 400,
@@ -1527,6 +1527,11 @@ exports.updateTag = (req, res) => {
     if (is_universal !== undefined) {
       updateFields.push("is_universal = ?");
       queryParams.push(is_universal ? 1 : 0);
+    }
+
+    if (book_id !== undefined) {
+      updateFields.push("book_id = ?");
+      queryParams.push(book_id ? book_id.trim() : null);
     }
 
     queryParams.push(tagId, userAccount);

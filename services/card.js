@@ -1514,7 +1514,7 @@ exports.updateTag = (req, res) => {
 
     const oldTag = findRows[0];
     const oldIsUniversal = oldTag.is_universal;
-    const creatorBookId = oldTag.book_id;
+    const selectBookid = book_id;
 
     const updateFields = ["tagName = ?"];
     const queryParams = [tagName.trim()];
@@ -1553,21 +1553,21 @@ exports.updateTag = (req, res) => {
       }
 
       // 如果由通用标签 (is_universal = 1) 改为了私有标签 (is_universal = 0)，
-      // 且标签有指定的创立者 book_id，则将非该创立者合集卡池（包含其下所有细分卡池）下的关联记录清理
-      if (oldIsUniversal === 1 && is_universal === 0 && creatorBookId) {
-        // creatorBookId 可能是单个 book_id，也可能是逗号分隔的多个 book_id (如: "book_1,book_2")
-        const creatorBookIds = String(creatorBookId)
+      // 除了传入的选中卡池，清理其他卡池下该标签的关联记录
+      if (oldIsUniversal === 1 && is_universal === 0) {
+        // selectBookid 可能是单个 book_id，也可能是逗号分隔的多个 book_id (如: "book_1,book_2")
+        const selectBookIds = String(selectBookid)
           .split(",")
           .map((id) => id.trim())
           .filter(Boolean);
 
-        if (creatorBookIds.length > 0) {
-          const inPlaceholders = creatorBookIds.map(() => "?").join(",");
+        if (selectBookIds.length > 0) {
+          const inPlaceholders = selectBookIds.map(() => "?").join(",");
           const findBooksSql = `SELECT book_id FROM unite_books WHERE unite_bookid IN (${inPlaceholders}) UNION SELECT book_id FROM books WHERE unite_bookid IN (${inPlaceholders})`;
-          const queryParams = [...creatorBookIds, ...creatorBookIds];
+          const queryParams = [...selectBookIds, ...selectBookIds];
 
           db.query(findBooksSql, queryParams, (bErr, bRows) => {
-            let validBookIds = [...creatorBookIds];
+            let validBookIds = [...selectBookIds];
             if (!bErr && bRows && bRows.length > 0) {
               const ids = bRows.map((r) => r.book_id).filter(Boolean);
               if (ids.length > 0) {

@@ -9,5 +9,6 @@ router.post("/updateCollectTag", collectTagHandler.updateCollectTag);
 router.post("/deleteCollectTag", collectTagHandler.deleteCollectTag);
 router.post("/getCollectCardTags", collectTagHandler.getCollectCardTags);
 router.post("/updateCollectCardTags", collectTagHandler.updateCollectCardTags);
+router.post("/updateCollectLikedCards", collectTagHandler.updateCollectLikedCards);
 
 module.exports = router;

@@ -232,4 +232,23 @@ CREATE TABLE `collect_card_tags` (
   KEY `idx_card_id` (`card_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic COMMENT = '收卡状态卡片标签关联表';
 
+-- ----------------------------
+-- 换卡标签关联表（exchange_card_tags）
+-- ----------------------------
+DROP TABLE IF EXISTS `exchange_card_tags`;
+CREATE TABLE `exchange_card_tags` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tagId` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '关联的标签ID',
+  `account` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户账号',
+  `book_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '卡池ID',
+  `card_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '卡片ID',
+  `exchange_count` int(11) NULL DEFAULT 0 COMMENT '换出/收卡数量',
+  `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_account_tag_card` (`account`, `tagId`, `card_id`) USING BTREE,
+  KEY `idx_tagId` (`tagId`) USING BTREE,
+  KEY `idx_account` (`account`) USING BTREE,
+  KEY `idx_card_id` (`card_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic COMMENT = '换卡标签关联表';
+
 SET FOREIGN_KEY_CHECKS = 1;

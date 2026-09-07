@@ -634,13 +634,24 @@ exports.updateUserCard = (req, res) => {
 
     getBookIdSql.then((bId) => {
       const now = new Date();
-      const upsertTagRecordSql = `
-        INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE exchange_count = VALUES(exchange_count)
-      `;
-      db.query(upsertTagRecordSql, [tagId, userAccount, bId || '', card_id, exCount, now], (err) => {
-        if (err) console.error("写入 exchange_card_tags 失败:", err);
+      // 先查后更新，避免表缺少唯一索引时产生重复记录
+      const checkSql = "SELECT id FROM exchange_card_tags WHERE account = ? AND tagId = ? AND card_id = ?";
+      db.query(checkSql, [userAccount, tagId, card_id], (checkErr, checkRows) => {
+        if (checkErr) {
+          console.error("查询 exchange_card_tags 失败:", checkErr);
+          return;
+        }
+        if (checkRows && checkRows.length > 0) {
+          const updateSql = "UPDATE exchange_card_tags SET exchange_count = ?, create_time = ? WHERE id = ?";
+          db.query(updateSql, [exCount, now, checkRows[0].id], (err) => {
+            if (err) console.error("更新 exchange_card_tags 失败:", err);
+          });
+        } else {
+          const insertSql = "INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES (?, ?, ?, ?, ?, ?)";
+          db.query(insertSql, [tagId, userAccount, bId || '', card_id, exCount, now], (err) => {
+            if (err) console.error("写入 exchange_card_tags 失败:", err);
+          });
+        }
       });
     });
   };
@@ -771,13 +782,24 @@ exports.unlitCard = (req, res) => {
 
     getBookIdSql.then((bId) => {
       const now = new Date();
-      const upsertTagRecordSql = `
-        INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE exchange_count = VALUES(exchange_count)
-      `;
-      db.query(upsertTagRecordSql, [tagId, userAccount, bId || '', card_id, exCount, now], (err) => {
-        if (err) console.error("写入 exchange_card_tags 失败:", err);
+      // 先查后更新，避免表缺少唯一索引时产生重复记录
+      const checkSql = "SELECT id FROM exchange_card_tags WHERE account = ? AND tagId = ? AND card_id = ?";
+      db.query(checkSql, [userAccount, tagId, card_id], (checkErr, checkRows) => {
+        if (checkErr) {
+          console.error("查询 exchange_card_tags 失败:", checkErr);
+          return;
+        }
+        if (checkRows && checkRows.length > 0) {
+          const updateSql = "UPDATE exchange_card_tags SET exchange_count = ?, create_time = ? WHERE id = ?";
+          db.query(updateSql, [exCount, now, checkRows[0].id], (err) => {
+            if (err) console.error("更新 exchange_card_tags 失败:", err);
+          });
+        } else {
+          const insertSql = "INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES (?, ?, ?, ?, ?, ?)";
+          db.query(insertSql, [tagId, userAccount, bId || '', card_id, exCount, now], (err) => {
+            if (err) console.error("写入 exchange_card_tags 失败:", err);
+          });
+        }
       });
     });
   };
@@ -1836,7 +1858,7 @@ exports.updateCardTags = async (req, res) => {
 
           // 2. 插入新的标签关联
           const now = new Date();
-          const insertSql = "INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES ? ON DUPLICATE KEY UPDATE exchange_count = VALUES(exchange_count)";
+          const insertSql = "INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES ?";
           const values = validAllocations.map((item) => [
             item.tagId,
             userAccount,
@@ -1957,14 +1979,26 @@ exports.updateAlreadyChangedCards = async (req, res) => {
               // 2. 如果是具体自定义标签，同步更新 exchange_card_tags 表
               if (isSpecificTag) {
                   if (targetCount > 0) {
-                    // 使用 INSERT ... ON DUPLICATE KEY UPDATE 避免并发竞态导致重复记录
+                    // 先查后更新，避免表缺少唯一索引时 ON DUPLICATE KEY UPDATE 失效导致重复记录
                     const doUpsert = (bId) => {
-                      const upsertSql = `INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) 
-                        VALUES (?, ?, ?, ?, ?, ?) 
-                        ON DUPLICATE KEY UPDATE exchange_count = VALUES(exchange_count)`;
-                      db.query(upsertSql, [tagId, userAccount, bId || "", card_id, targetCount, nowDate], (err) => {
-                        if (err) return reject(err);
-                        resolve();
+                      const checkSql = "SELECT id FROM exchange_card_tags WHERE account = ? AND tagId = ? AND card_id = ?";
+                      db.query(checkSql, [userAccount, tagId, card_id], (checkErr, checkRows) => {
+                        if (checkErr) return reject(checkErr);
+                        if (checkRows && checkRows.length > 0) {
+                          // 已存在，更新 exchange_count
+                          const updateSql = "UPDATE exchange_card_tags SET exchange_count = ?, create_time = ? WHERE id = ?";
+                          db.query(updateSql, [targetCount, nowDate, checkRows[0].id], (err) => {
+                            if (err) return reject(err);
+                            resolve();
+                          });
+                        } else {
+                          // 不存在，插入新记录
+                          const insertSql = "INSERT INTO exchange_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES (?, ?, ?, ?, ?, ?)";
+                          db.query(insertSql, [tagId, userAccount, bId || "", card_id, targetCount, nowDate], (err) => {
+                            if (err) return reject(err);
+                            resolve();
+                          });
+                        }
                       });
                     };
 

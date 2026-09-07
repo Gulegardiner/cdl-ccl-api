@@ -11,4 +11,8 @@ router.post("/getCollectCardTags", collectTagHandler.getCollectCardTags);
 router.post("/updateCollectCardTags", collectTagHandler.updateCollectCardTags);
 router.post("/updateCollectLikedCards", collectTagHandler.updateCollectLikedCards);
 
+// 重复数据查询与清理
+router.post("/getDuplicateCollectCardTags", collectTagHandler.getDuplicateCollectCardTags);
+router.post("/deduplicateCollectCardTags", collectTagHandler.deduplicateCollectCardTags);
+
 module.exports = router;

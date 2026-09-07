@@ -2004,6 +2004,60 @@ exports.updateCardPrice = (req, res) => {
     });
 };
 
+// 查询 exchange_card_tags 表中的重复数据
+exports.getDuplicateExchangeCardTags = (req, res) => {
+  const sql = `
+    SELECT account, tagId, card_id, COUNT(*) as duplicate_count, 
+           GROUP_CONCAT(id ORDER BY id) as record_ids,
+           GROUP_CONCAT(exchange_count ORDER BY id) as exchange_counts
+    FROM exchange_card_tags
+    GROUP BY account, tagId, card_id
+    HAVING COUNT(*) > 1
+    ORDER BY duplicate_count DESC
+  `;
+  db.query(sql, (err, results) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "查询重复数据失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "查询成功",
+      data: results,
+      total: results.length,
+    });
+  });
+};
+
+// 清理 exchange_card_tags 表中的重复数据（保留 id 最大的一条）
+exports.deduplicateExchangeCardTags = (req, res) => {
+  const deleteSql = `
+    DELETE e1 FROM exchange_card_tags e1
+    INNER JOIN exchange_card_tags e2 
+    ON e1.account = e2.account AND e1.tagId = e2.tagId AND e1.card_id = e2.card_id
+    AND e1.id < e2.id
+  `;
+  db.query(deleteSql, (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "去重失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "去重成功",
+      data: {
+        deletedCount: result.affectedRows,
+      },
+    });
+  });
+};
+
 
 
 

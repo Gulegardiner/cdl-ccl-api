@@ -66,6 +66,10 @@ router.post("/updateCardTags", cardHandler.updateCardTags);
 router.post("/updateAlreadyChangedCards", cardHandler.updateAlreadyChangedCards);
 router.post("/updateCardPrice", cardHandler.updateCardPrice);
 
+// 重复数据查询与清理
+router.post("/getDuplicateExchangeCardTags", cardHandler.getDuplicateExchangeCardTags);
+router.post("/deduplicateExchangeCardTags", cardHandler.deduplicateExchangeCardTags);
+
 module.exports = router;
 
 

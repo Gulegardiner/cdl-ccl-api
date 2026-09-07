@@ -614,3 +614,57 @@ exports.updateCollectLikedCards = async (req, res) => {
   }
 };
 
+// 查询 collect_card_tags 表中的重复数据
+exports.getDuplicateCollectCardTags = (req, res) => {
+  const sql = `
+    SELECT account, tagId, card_id, COUNT(*) as duplicate_count, 
+           GROUP_CONCAT(id ORDER BY id) as record_ids,
+           GROUP_CONCAT(exchange_count ORDER BY id) as exchange_counts
+    FROM collect_card_tags
+    GROUP BY account, tagId, card_id
+    HAVING COUNT(*) > 1
+    ORDER BY duplicate_count DESC
+  `;
+  db.query(sql, (err, results) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "查询重复数据失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "查询成功",
+      data: results,
+      total: results.length,
+    });
+  });
+};
+
+// 清理 collect_card_tags 表中的重复数据（保留 id 最大的一条）
+exports.deduplicateCollectCardTags = (req, res) => {
+  const deleteSql = `
+    DELETE c1 FROM collect_card_tags c1
+    INNER JOIN collect_card_tags c2 
+    ON c1.account = c2.account AND c1.tagId = c2.tagId AND c1.card_id = c2.card_id
+    AND c1.id < c2.id
+  `;
+  db.query(deleteSql, (err, result) => {
+    if (err) {
+      return res.send({
+        status: 500,
+        message: "去重失败",
+        error: err,
+      });
+    }
+    return res.send({
+      status: 200,
+      message: "去重成功",
+      data: {
+        deletedCount: result.affectedRows,
+      },
+    });
+  });
+};
+

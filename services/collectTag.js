@@ -562,34 +562,24 @@ exports.updateCollectLikedCards = async (req, res) => {
             .then(() => {
               // 2. 如果是具体自定义标签，同步更新 collect_card_tags 表
               if (isSpecificTag) {
-                const checkTagSql = "SELECT * FROM collect_card_tags WHERE account = ? AND tagId = ? AND card_id = ?";
-                db.query(checkTagSql, [userAccount, tagId, card_id], (tErr, tRows) => {
-                  if (tErr) return reject(tErr);
-
                   if (targetCount > 0) {
-                    if (tRows && tRows.length > 0) {
-                      const updateTagCountSql = "UPDATE collect_card_tags SET exchange_count = ? WHERE account = ? AND tagId = ? AND card_id = ?";
-                      db.query(updateTagCountSql, [targetCount, userAccount, tagId, card_id], (err) => {
+                    // 使用 INSERT ... ON DUPLICATE KEY UPDATE 避免并发竞态导致重复记录
+                    const doUpsert = (bId) => {
+                      const upsertSql = `INSERT INTO collect_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) 
+                        VALUES (?, ?, ?, ?, ?, ?) 
+                        ON DUPLICATE KEY UPDATE exchange_count = VALUES(exchange_count)`;
+                      db.query(upsertSql, [tagId, userAccount, bId || "", card_id, targetCount, nowDate], (err) => {
                         if (err) return reject(err);
                         resolve();
                       });
-                    } else {
-                      // 查询 book_id
-                      const getBookId = cardBookId
-                        ? Promise.resolve(cardBookId)
-                        : new Promise((resB) => {
-                            db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, cRows) => {
-                              if (!err && cRows && cRows.length > 0) resB(cRows[0].book_id);
-                              else resB("");
-                            });
-                          });
+                    };
 
-                      getBookId.then((bId) => {
-                        const insertTagSql = "INSERT INTO collect_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES (?, ?, ?, ?, ?, ?)";
-                        db.query(insertTagSql, [tagId, userAccount, bId || "", card_id, targetCount, nowDate], (err) => {
-                          if (err) return reject(err);
-                          resolve();
-                        });
+                    if (cardBookId) {
+                      doUpsert(cardBookId);
+                    } else {
+                      db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, cRows) => {
+                        const bId = (!err && cRows && cRows.length > 0) ? cRows[0].book_id : "";
+                        doUpsert(bId);
                       });
                     }
                   } else {
@@ -600,7 +590,6 @@ exports.updateCollectLikedCards = async (req, res) => {
                       resolve();
                     });
                   }
-                });
               } else {
                 resolve();
               }

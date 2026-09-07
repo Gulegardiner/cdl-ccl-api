@@ -226,6 +226,7 @@ CREATE TABLE `collect_card_tags` (
   `exchange_count` int(11) NULL DEFAULT 0 COMMENT '换出/收卡数量',
   `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_account_tag_card` (`account`, `tagId`, `card_id`) USING BTREE,
   KEY `idx_tagId` (`tagId`) USING BTREE,
   KEY `idx_account` (`account`) USING BTREE,
   KEY `idx_card_id` (`card_id`) USING BTREE

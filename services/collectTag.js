@@ -422,7 +422,7 @@ exports.getCollectCardTags = (req, res) => {
 };
 
 // 6. 重新分配/更新某张小卡的标签打标记录 (tagAllocations: [{ tagId, exchange_count }])
-exports.updateCollectCardTags = (req, res) => {
+exports.updateCollectCardTags = async (req, res) => {
   const { card_id, book_id, tagAllocations } = req.body;
   if (!card_id) {
     return res.send({
@@ -439,64 +439,129 @@ exports.updateCollectCardTags = (req, res) => {
     });
   }
 
-  // 先获取卡片的 book_id
-  const getBookIdSql = book_id ? Promise.resolve(book_id) : new Promise((resolve) => {
-    db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, rows) => {
-      if (!err && rows.length > 0) resolve(rows[0].book_id);
-      else resolve('');
+  try {
+    // 先获取卡片的 book_id
+    const bId = book_id || await new Promise((resolve) => {
+      db.query("SELECT book_id FROM cards WHERE card_id = ?", [card_id], (err, rows) => {
+        if (!err && rows.length > 0) resolve(rows[0].book_id);
+        else resolve('');
+      });
     });
-  });
 
-  getBookIdSql.then((bId) => {
-    // 1. 删除该用户对该卡片原有的所有标签关联
-    const deleteSql = "DELETE FROM collect_card_tags WHERE account = ? AND card_id = ?";
-    db.query(deleteSql, [userAccount, card_id], (deleteErr) => {
-      if (deleteErr) {
+    // 过滤出 exchange_count > 0 的有效分配
+    const validAllocations = Array.isArray(tagAllocations)
+      ? tagAllocations.filter((item) => item.tagId && Number(item.exchange_count) > 0)
+      : [];
+
+    // 使用事务包裹 DELETE + INSERT，防止并发导致重复数据
+    db.getConnection((connErr, connection) => {
+      if (connErr) {
         return res.send({
           status: 500,
-          message: "清除旧标签关联失败",
-          error: deleteErr,
+          message: "获取数据库连接失败",
+          error: connErr,
         });
       }
 
-      // 过滤出 exchange_count > 0 的有效分配
-      const validAllocations = Array.isArray(tagAllocations)
-        ? tagAllocations.filter((item) => item.tagId && Number(item.exchange_count) > 0)
-        : [];
-
-      if (validAllocations.length === 0) {
-        return res.send({
-          status: 200,
-          message: "更新卡片标签成功（已清空标签）",
-        });
-      }
-
-      const now = new Date();
-      const insertSql = "INSERT INTO collect_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES ?";
-      const values = validAllocations.map((item) => [
-        item.tagId,
-        userAccount,
-        bId || '',
-        card_id,
-        Number(item.exchange_count),
-        now,
-      ]);
-
-      db.query(insertSql, [values], (insertErr) => {
-        if (insertErr) {
+      connection.beginTransaction((txErr) => {
+        if (txErr) {
+          connection.release();
           return res.send({
             status: 500,
-            message: "写入新标签关联失败",
-            error: insertErr,
+            message: "开始事务失败",
+            error: txErr,
           });
         }
-        return res.send({
-          status: 200,
-          message: "更新卡片标签成功",
+
+        // 1. 删除该用户对该卡片原有的所有标签关联
+        const deleteSql = "DELETE FROM collect_card_tags WHERE account = ? AND card_id = ?";
+        connection.query(deleteSql, [userAccount, card_id], (deleteErr) => {
+          if (deleteErr) {
+            return connection.rollback(() => {
+              connection.release();
+              res.send({
+                status: 500,
+                message: "清除旧标签关联失败",
+                error: deleteErr,
+              });
+            });
+          }
+
+          if (validAllocations.length === 0) {
+            // 没有新分配，提交事务（仅删除）
+            return connection.commit((commitErr) => {
+              if (commitErr) {
+                return connection.rollback(() => {
+                  connection.release();
+                  res.send({
+                    status: 500,
+                    message: "提交事务失败",
+                    error: commitErr,
+                  });
+                });
+              }
+              connection.release();
+              res.send({
+                status: 200,
+                message: "更新卡片标签成功（已清空标签）",
+              });
+            });
+          }
+
+          // 2. 插入新的标签关联
+          const now = new Date();
+          const insertSql = "INSERT INTO collect_card_tags (tagId, account, book_id, card_id, exchange_count, create_time) VALUES ? ON DUPLICATE KEY UPDATE exchange_count = VALUES(exchange_count)";
+          const values = validAllocations.map((item) => [
+            item.tagId,
+            userAccount,
+            bId || '',
+            card_id,
+            Number(item.exchange_count),
+            now,
+          ]);
+
+          connection.query(insertSql, [values], (insertErr) => {
+            if (insertErr) {
+              return connection.rollback(() => {
+                connection.release();
+                res.send({
+                  status: 500,
+                  message: "写入新标签关联失败",
+                  error: insertErr,
+                });
+              });
+            }
+
+            // 提交事务
+            connection.commit((commitErr) => {
+              if (commitErr) {
+                return connection.rollback(() => {
+                  connection.release();
+                  res.send({
+                    status: 500,
+                    message: "提交事务失败",
+                    error: commitErr,
+                  });
+                });
+              }
+              connection.release();
+              res.send({
+                status: 200,
+                message: "更新卡片标签成功",
+              });
+            });
+          });
         });
       });
     });
-  });
+  } catch (err) {
+    console.error("更新卡片标签失败:", err);
+    return res.send({
+      status: 500,
+      message: "更新卡片标签失败",
+      error: err,
+    });
+  }
 };
 
 // 7. 更新收卡小卡数量（支持在全部、未打标、特定标签下进行数量修正）

@@ -184,8 +184,6 @@ exports.createCard = (req, res) => {
     owned_count,
     onlyId,
     account,
-    creater_name,
-    creater_account,
   } = req.body;
 
   if (!card_id || !book_id || !name) {
@@ -195,100 +193,125 @@ exports.createCard = (req, res) => {
     });
   }
 
-  // 检查 card_id 是否已存在
-  const checkSql = "SELECT * FROM cards WHERE card_id = ?";
-  db.query(checkSql, card_id, (err, results) => {
-    if (err) return res.cc(err);
-    if (results.length > 0) {
+  // 【安全修复】creater_account 和 creater_name 必须从 JWT token 中获取，不信任前端传入的值
+  // 防止用户通过篡改 localStorage 伪造创建者身份
+  const tokenAccount = getAccountFromRequest(req);
+  if (!tokenAccount) {
+    return res.send({
+      status: 401,
+      message: "未登录，无法创建卡片",
+    });
+  }
+
+  // 从数据库查询当前登录用户的真实信息
+  const userSql = "SELECT account, nickname FROM users WHERE account = ?";
+  db.query(userSql, [tokenAccount], (userErr, userResults) => {
+    if (userErr) return res.cc(userErr);
+    if (userResults.length === 0) {
       return res.send({
-        status: 500,
-        message: "卡片ID已存在",
+        status: 403,
+        message: "用户不存在，无法创建卡片",
       });
     }
 
-    // 检查关联的卡池是否存在
-    const bookSql = "SELECT * FROM books WHERE book_id = ?";
-    db.query(bookSql, book_id, (err, bookResults) => {
+    const realAccount = userResults[0].account;
+    const realNickname = userResults[0].nickname || realAccount;
+
+    // 检查 card_id 是否已存在
+    const checkSql = "SELECT * FROM cards WHERE card_id = ?";
+    db.query(checkSql, card_id, (err, results) => {
       if (err) return res.cc(err);
-      if (bookResults.length === 0) {
+      if (results.length > 0) {
         return res.send({
-          status: 400,
-          message: "关联的卡池不存在",
+          status: 500,
+          message: "卡片ID已存在",
         });
       }
 
-      // 如果传了 series_id，检查关联的分组是否存在
-      if (series_id) {
-        const seriesSql = "SELECT * FROM series WHERE series_id = ?";
-        db.query(seriesSql, series_id, (err, seriesResults) => {
-          if (err) return res.cc(err);
-          if (seriesResults.length === 0) {
-            return res.send({
-              status: 400,
-              message: "关联的分组不存在",
-            });
-          }
+      // 检查关联的卡池是否存在
+      const bookSql = "SELECT * FROM books WHERE book_id = ?";
+      db.query(bookSql, book_id, (err, bookResults) => {
+        if (err) return res.cc(err);
+        if (bookResults.length === 0) {
+          return res.send({
+            status: 400,
+            message: "关联的卡池不存在",
+          });
+        }
+
+        // 如果传了 series_id，检查关联的分组是否存在
+        if (series_id) {
+          const seriesSql = "SELECT * FROM series WHERE series_id = ?";
+          db.query(seriesSql, series_id, (err, seriesResults) => {
+            if (err) return res.cc(err);
+            if (seriesResults.length === 0) {
+              return res.send({
+                status: 400,
+                message: "关联的分组不存在",
+              });
+            }
+            doInsert();
+          });
+        } else {
           doInsert();
-        });
-      } else {
-        doInsert();
-      }
-    });
+        }
+      });
 
-    function doInsert() {
-      const now = Date.now();
-      const sql = "INSERT INTO cards SET ?";
-      db.query(
-        sql,
-        {
-          card_id,
-          book_id,
-          series_id: series_id || null,
-          name,
-          image_url: image_url || null,
-          back_image_url: back_image_url || null,
-          rarity: rarity || null,
-          series_name: series_name || '',
-          display_style: display_style || "card",
-          orientation: orientation || "portrait",
-          note: note || null,
-          owned_count: 0,
-          onlyId: onlyId || null,
-          account: account || null,
-          creater_name: creater_name || null,
-          creater_account: creater_account || null,
-          created_at: now,
-          updated_at: now,
-        },
-        (err, result) => {
-          if (err) return res.cc(err);
-          if (result.affectedRows !== 1) {
-            return res.send({
-              status: 500,
-              message: "新增卡片失败",
-            });
-          }
+      function doInsert() {
+        const now = Date.now();
+        const sql = "INSERT INTO cards SET ?";
+        db.query(
+          sql,
+          {
+            card_id,
+            book_id,
+            series_id: series_id || null,
+            name,
+            image_url: image_url || null,
+            back_image_url: back_image_url || null,
+            rarity: rarity || null,
+            series_name: series_name || '',
+            display_style: display_style || "card",
+            orientation: orientation || "portrait",
+            note: note || null,
+            owned_count: 0,
+            onlyId: onlyId || null,
+            account: account || null,
+            creater_name: realNickname,
+            creater_account: realAccount,
+            created_at: now,
+            updated_at: now,
+          },
+          (err, result) => {
+            if (err) return res.cc(err);
+            if (result.affectedRows !== 1) {
+              return res.send({
+                status: 500,
+                message: "新增卡片失败",
+              });
+            }
 
-          // 如果存在账户并且指定了拥有数量，则写入用户关系表
-          const userAccount = getAccountFromRequest(req) || account;
-          if (userAccount && owned_count !== undefined) {
-            const insertRelationSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
-            db.query(insertRelationSql, [userAccount, card_id, owned_count || 0, now, now], (err) => {
-              if (err) return res.cc(err);
+            // 如果存在账户并且指定了拥有数量，则写入用户关系表
+            const userAccount = realAccount;
+            if (userAccount && owned_count !== undefined) {
+              const insertRelationSql = "INSERT INTO user_cards (account, card_id, owned_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)";
+              db.query(insertRelationSql, [userAccount, card_id, owned_count || 0, now, now], (err) => {
+                if (err) return res.cc(err);
+                return res.send({
+                  status: 200,
+                  message: "新增卡片成功",
+                });
+              });
+            } else {
               return res.send({
                 status: 200,
                 message: "新增卡片成功",
               });
-            });
-          } else {
-            return res.send({
-              status: 200,
-              message: "新增卡片成功",
-            });
+            }
           }
-        }
-      );
-    }
+        );
+      }
+    });
   });
 };
 

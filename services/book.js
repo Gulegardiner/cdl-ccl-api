@@ -109,7 +109,7 @@ exports.getBookDetail = (req, res) => {
 
 // 新增卡池
 exports.createBook = (req, res) => {
-  const { book_id, name, theme, description, cover_color, cover_image_url, creater_name, creater_account } = req.body;
+  const { book_id, name, theme, description, cover_color, cover_image_url } = req.body;
 
   if (!book_id || !name) {
     return res.send({
@@ -118,55 +118,74 @@ exports.createBook = (req, res) => {
     });
   }
 
-  if (!creater_name || !creater_account) {
+  // 【安全修复】creater_account 和 creater_name 必须从 JWT token 中获取，不信任前端传入的值
+  // 防止用户通过篡改 localStorage 伪造创建者身份
+  const tokenAccount = req.auth ? req.auth.account : null;
+  console.log('tokenAccount', tokenAccount)
+  if (!tokenAccount) {
     return res.send({
-      status: 400,
-      message: "creater_name 和 creater_account 不能为空",
+      status: 401,
+      message: "未登录，无法创建卡池",
     });
   }
 
-  // 检查 book_id 是否已存在
-  const checkSql = "SELECT * FROM books WHERE book_id = ?";
-  db.query(checkSql, book_id, (err, results) => {
-    if (err) return res.cc(err);
-    if (results.length > 0) {
+  // 从数据库查询当前登录用户的真实信息
+  const userSql = "SELECT account, nickname FROM users WHERE account = ?";
+  db.query(userSql, [tokenAccount], (userErr, userResults) => {
+    if (userErr) return res.cc(userErr);
+    if (userResults.length === 0) {
       return res.send({
-        status: 500,
-        message: "卡池ID已存在",
+        status: 403,
+        message: "用户不存在，无法创建卡池",
       });
     }
 
-    const now = Date.now();
-    const sql = "INSERT INTO books SET ?";
-    db.query(
-      sql,
-      {
-        book_id,
-        name,
-        theme: theme || null,
-        description: description || null,
-        cover_color: cover_color || null,
-        cover_image_url: cover_image_url || null,
-        creater_name,
-        creater_account,
-        status: "draft",
-        created_at: now,
-        updated_at: now,
-      },
-      (err, result) => {
-        if (err) return res.cc(err);
-        if (result.affectedRows !== 1) {
-          return res.send({
-            status: 500,
-            message: "新增卡池失败",
-          });
-        }
-        res.send({
-          status: 200,
-          message: "新增卡池成功",
+    const realAccount = userResults[0].account;
+    const realNickname = userResults[0].nickname || realAccount;
+
+    // 检查 book_id 是否已存在
+    const checkSql = "SELECT * FROM books WHERE book_id = ?";
+    db.query(checkSql, book_id, (err, results) => {
+      if (err) return res.cc(err);
+      if (results.length > 0) {
+        return res.send({
+          status: 500,
+          message: "卡池ID已存在",
         });
       }
-    );
+
+      const now = Date.now();
+      const sql = "INSERT INTO books SET ?";
+      db.query(
+        sql,
+        {
+          book_id,
+          name,
+          theme: theme || null,
+          description: description || null,
+          cover_color: cover_color || null,
+          cover_image_url: cover_image_url || null,
+          creater_name: realNickname,
+          creater_account: realAccount,
+          status: "draft",
+          created_at: now,
+          updated_at: now,
+        },
+        (err, result) => {
+          if (err) return res.cc(err);
+          if (result.affectedRows !== 1) {
+            return res.send({
+              status: 500,
+              message: "新增卡池失败",
+            });
+          }
+          res.send({
+            status: 200,
+            message: "新增卡池成功",
+          });
+        }
+      );
+    });
   });
 };
 

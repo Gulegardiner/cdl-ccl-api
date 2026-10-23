@@ -53,8 +53,14 @@ router.post("/clearUserCards", cardHandler.clearUserCards);
 // 清空当前用户指定卡池的点亮记录、收换卡记录及导入历史（支持多个 book_id）
 router.post("/clearUserCardsByBook", cardHandler.clearUserCardsByBook);
 
+// 清空当前用户指定分组的点亮记录、收换卡记录
+router.post("/clearUserCardsBySeries", cardHandler.clearUserCardsBySeries);
+
 // 一键点亮指定卡池中所有未点亮的小卡（支持多个 book_id）
 router.post("/lightAllCardsByBook", cardHandler.lightAllCardsByBook);
+
+// 一键点亮指定分组中所有未点亮的小卡
+router.post("/lightAllCardsBySeries", cardHandler.lightAllCardsBySeries);
 
 // 标签相关接口
 router.post("/createTag", cardHandler.createTag);

@@ -1,42 +1,7 @@
 const db = require("../db/index");
 
-// 获取卡池列表（支持分页和筛选）
-exports.getBookList = (req, res) => {
-  let { page, limit, theme, keyword, status, creater_name, creater_account, login_account, admin_account } = req.body;
-  const queryConditions = [];
-  const queryValues = [];
-
-  if (theme) {
-    queryConditions.push("theme = ?");
-    queryValues.push(theme);
-  }
-  if (keyword) {
-    queryConditions.push("(name LIKE ? OR description LIKE ?)");
-    queryValues.push(`%${keyword}%`, `%${keyword}%`);
-  }
-  if (creater_name) {
-    queryConditions.push("creater_name LIKE ?");
-    queryValues.push(`%${creater_name}%`);
-  }
-
-  if (admin_account) {
-    queryConditions.push("(status = 'pass' OR status = 'wait' OR (status = 'draft' AND creater_account = ?))");
-    queryValues.push(admin_account);
-  } else if (login_account) {
-    queryConditions.push("(status = 'pass' OR creater_account = ?)");
-    queryValues.push(login_account);
-  } else {
-    if (status) {
-      queryConditions.push("status = ?");
-      queryValues.push(status);
-    }
-    if (creater_account) {
-      queryConditions.push("creater_account = ?");
-      queryValues.push(creater_account);
-    }
-  }
-
-  let sql = "SELECT * FROM books";
+// 执行卡池查询的通用函数
+const executeBookQuery = (sql, queryConditions, queryValues, page, limit, res, message = "获取卡池列表成功") => {
   if (queryConditions.length) {
     sql += ` WHERE ${queryConditions.join(" AND ")}`;
   }
@@ -71,13 +36,137 @@ exports.getBookList = (req, res) => {
       }
       return res.send({
         status: 200,
-        message: "获取卡池列表成功",
+        message: message,
         data: result,
         total,
         pagination: page && limit ? { page, limit, total } : undefined,
       });
     });
   });
+};
+
+// 获取卡池列表（支持分页和筛选）
+exports.getBookList = (req, res) => {
+  let { page, limit, theme, keyword, status, creater_name, creater_account, login_account, admin_account } = req.body;
+  const queryConditions = [];
+  const queryValues = [];
+
+  // 过滤掉 共建卡池，booktype 为 'public' 且 status 不是 'pass' 的数据
+  queryConditions.push("(IFNULL(booktype, '') != 'public' OR status = 'pass')");
+
+  if (theme) {
+    queryConditions.push("theme = ?");
+    queryValues.push(theme);
+  }
+  if (keyword) {
+    queryConditions.push("(name LIKE ? OR description LIKE ?)");
+    queryValues.push(`%${keyword}%`, `%${keyword}%`);
+  }
+  if (creater_name) {
+    queryConditions.push("creater_name LIKE ?");
+    queryValues.push(`%${creater_name}%`);
+  }
+
+  if (admin_account) {
+    queryConditions.push("(status = 'pass' OR status = 'wait' OR (status = 'draft' AND creater_account = ?) OR booktype = 'public')");
+    queryValues.push(admin_account);
+    const sql = "SELECT * FROM books";
+    executeBookQuery(sql, queryConditions, queryValues, page, limit, res);
+  } else if (login_account) {
+    // 通过 login_account 查询用户的真实 account
+    db.query("SELECT account FROM users WHERE account = ? OR nickname = ?", [login_account, login_account], (userErr, userResults) => {
+      if (userErr) {
+        return res.send({
+          status: 500,
+          message: "查询用户信息失败",
+          error: userErr,
+        });
+      }
+      // 使用查到的真实 account，如果没查到就用 login_account
+      const realAccount = userResults.length > 0 ? userResults[0].account : login_account;
+      
+      queryConditions.push("(status = 'pass' OR creater_account = ? OR booktype = 'public')");
+      queryValues.push(realAccount);
+      
+      const sql = "SELECT * FROM books";
+      executeBookQuery(sql, queryConditions, queryValues, page, limit, res);
+    });
+  } else {
+    if (status) {
+      queryConditions.push("status = ?");
+      queryValues.push(status);
+    } else {
+      // 未登录用户也能看到公共卡池
+      queryConditions.push("(status = 'pass' OR booktype = 'public')");
+    }
+    if (creater_account) {
+      queryConditions.push("creater_account = ?");
+      queryValues.push(creater_account);
+    }
+    const sql = "SELECT * FROM books";
+    executeBookQuery(sql, queryConditions, queryValues, page, limit, res);
+  }
+};
+
+// 获取公共卡池中未通过审核的列表（booktype 为 'public' 且 status 不是 'pass'）
+exports.getpublicBookList = (req, res) => {
+  let { page, limit, theme, keyword, status, creater_name, creater_account, login_account, admin_account } = req.body;
+  const queryConditions = [];
+  const queryValues = [];
+
+  // 只返回 booktype 为 'public' 且 status 不是 'pass' 的数据
+  queryConditions.push("booktype = 'public'");
+  queryConditions.push("status != 'pass'");
+
+  if (theme) {
+    queryConditions.push("theme = ?");
+    queryValues.push(theme);
+  }
+  if (keyword) {
+    queryConditions.push("(name LIKE ? OR description LIKE ?)");
+    queryValues.push(`%${keyword}%`, `%${keyword}%`);
+  }
+  if (creater_name) {
+    queryConditions.push("creater_name LIKE ?");
+    queryValues.push(`%${creater_name}%`);
+  }
+
+  if (admin_account) {
+    queryConditions.push("(status = 'pass' OR status = 'wait' OR (status = 'draft' AND creater_account = ?) OR booktype = 'public')");
+    queryValues.push(admin_account);
+    const sql = "SELECT * FROM books";
+    executeBookQuery(sql, queryConditions, queryValues, page, limit, res, "获取公共卡池列表成功");
+  } else if (login_account) {
+    // 通过 login_account 查询用户的真实 account
+    db.query("SELECT account FROM users WHERE account = ? OR nickname = ?", [login_account, login_account], (userErr, userResults) => {
+      if (userErr) {
+        return res.send({
+          status: 500,
+          message: "查询用户信息失败",
+          error: userErr,
+        });
+      }
+      // 使用查到的真实 account，如果没查到就用 login_account
+      const realAccount = userResults.length > 0 ? userResults[0].account : login_account;
+      
+      queryConditions.push("(status = 'pass' OR creater_account = ? OR booktype = 'public')");
+      queryValues.push(realAccount);
+      
+      const sql = "SELECT * FROM books";
+      executeBookQuery(sql, queryConditions, queryValues, page, limit, res, "获取公共卡池列表成功");
+    });
+  } else {
+    if (status) {
+      queryConditions.push("status = ?");
+      queryValues.push(status);
+    }
+    if (creater_account) {
+      queryConditions.push("creater_account = ?");
+      queryValues.push(creater_account);
+    }
+    const sql = "SELECT * FROM books";
+    executeBookQuery(sql, queryConditions, queryValues, page, limit, res, "获取公共卡池列表成功");
+  }
 };
 
 // 获取单个卡池详情
@@ -109,7 +198,7 @@ exports.getBookDetail = (req, res) => {
 
 // 新增卡池
 exports.createBook = (req, res) => {
-  const { book_id, name, theme, description, cover_color, cover_image_url } = req.body;
+  const { book_id, name, theme, description, cover_color, cover_image_url, booktype } = req.body;
 
   if (!book_id || !name) {
     return res.send({
@@ -117,6 +206,10 @@ exports.createBook = (req, res) => {
       message: "book_id 和 name 不能为空",
     });
   }
+
+  // booktype 校验：只允许 person（个人）或 public（公共）
+  const validBooktypes = ["person", "public"];
+  const finalBooktype = validBooktypes.includes(booktype) ? booktype : "person";
 
   // 【安全修复】creater_account 和 creater_name 必须从 JWT token 中获取，不信任前端传入的值
   // 防止用户通过篡改 localStorage 伪造创建者身份
@@ -165,6 +258,7 @@ exports.createBook = (req, res) => {
           description: description || null,
           cover_color: cover_color || null,
           cover_image_url: cover_image_url || null,
+          booktype: finalBooktype,
           creater_name: realNickname,
           creater_account: realAccount,
           status: "draft",

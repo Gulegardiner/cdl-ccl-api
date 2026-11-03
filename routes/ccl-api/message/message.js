@@ -23,4 +23,13 @@ router.post("/deleteMessage", messageHandler.deleteMessage);
 // 删除回复
 router.post("/deleteReply", messageHandler.deleteReply);
 
+// 获取通知列表
+router.post("/getNotifications", messageHandler.getNotifications);
+
+// 获取未读通知数量
+router.post("/getUnreadCount", messageHandler.getUnreadCount);
+
+// 标记通知已读
+router.post("/markRead", messageHandler.markRead);
+
 module.exports = router;

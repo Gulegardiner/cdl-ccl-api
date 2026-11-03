@@ -358,17 +358,37 @@ exports.createReply = (req, res) => {
     db.query(insertReplySql, replyData, (insertErr, result) => {
       if (insertErr) return res.cc(insertErr);
 
+      const replyId = result.insertId;
+
       // 主留言回复计数 +1
       const updateCountSql = "UPDATE messages SET reply_count = reply_count + 1 WHERE id = ?";
       db.query(updateCountSql, [message_id], (uErr) => {
         if (uErr) console.error("更新留言回复数失败:", uErr);
       });
 
+      // 创建通知：判断通知对象
+      const notifyAccount = replyData.reply_to_account || message.account;
+      // 自己回复自己不产生通知
+      if (notifyAccount && notifyAccount !== user.account) {
+        const notifData = {
+          message_id: Number(message_id),
+          reply_id: replyId,
+          from_account: user.account,
+          to_account: notifyAccount,
+          is_read: 0,
+          create_time: new Date(),
+        };
+        const insertNotifSql = "INSERT INTO message_notifications SET ?";
+        db.query(insertNotifSql, notifData, (notifErr) => {
+          if (notifErr) console.error("创建通知失败:", notifErr);
+        });
+      }
+
       res.send({
         status: 200,
         message: "回复成功",
         data: {
-          id: result.insertId,
+          id: replyId,
         },
       });
     });
@@ -489,4 +509,150 @@ exports.deleteReply = (req, res) => {
       });
     });
   });
+};
+
+// 8. 获取当前用户的通知列表（分页）
+exports.getNotifications = (req, res) => {
+  const user = getUserFromRequest(req);
+  if (!user || !user.account) {
+    return res.send({ status: 401, message: "请先登录" });
+  }
+
+  let { page = 1, limit = 20 } = req.body || {};
+  page = Math.max(1, parseInt(page) || 1);
+  limit = Math.max(1, Math.min(50, parseInt(limit) || 20));
+  const offset = (page - 1) * limit;
+
+  const currentAccount = user.account;
+
+  // 统计总数
+  const countSql = "SELECT COUNT(*) AS total FROM message_notifications WHERE to_account = ?";
+  db.query(countSql, [currentAccount], (err, countResult) => {
+    if (err) return res.cc(err);
+    const total = countResult[0]?.total || 0;
+
+    if (total === 0) {
+      return res.send({
+        status: 200,
+        message: "获取通知列表成功",
+        data: [],
+        total: 0,
+        page,
+        limit,
+      });
+    }
+
+    const listSql = `
+      SELECT 
+        n.id,
+        n.message_id,
+        n.reply_id,
+        n.from_account,
+        n.to_account,
+        n.is_read,
+        n.create_time,
+        u.nickname AS from_nickname,
+        u.image_url AS from_avatar,
+        u.identity AS from_identity,
+        m.account AS message_account,
+        m.title AS message_title,
+        m.content AS message_content,
+        m.images AS message_images,
+        m.is_public AS message_is_public,
+        mu.nickname AS message_nickname,
+        mu.image_url AS message_avatar,
+        r.content AS reply_content
+      FROM message_notifications n
+      LEFT JOIN users u ON n.from_account = u.account
+      LEFT JOIN messages m ON n.message_id = m.id
+      LEFT JOIN users mu ON m.account = mu.account
+      LEFT JOIN message_replies r ON n.reply_id = r.id
+      WHERE n.to_account = ?
+      ORDER BY n.create_time DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    db.query(listSql, [currentAccount, limit, offset], (listErr, rows) => {
+      if (listErr) return res.cc(listErr);
+
+      const list = rows.map((item) => {
+        let images = [];
+        if (item.message_images) {
+          try {
+            images = JSON.parse(item.message_images);
+            if (!Array.isArray(images)) images = [item.message_images];
+          } catch (e) {
+            images = item.message_images.split(",").map((s) => s.trim()).filter(Boolean);
+          }
+        }
+        return {
+          ...item,
+          message_images: images,
+        };
+      });
+
+      res.send({
+        status: 200,
+        message: "获取通知列表成功",
+        data: list,
+        total,
+        page,
+        limit,
+      });
+    });
+  });
+};
+
+// 9. 获取当前用户未读通知数量
+exports.getUnreadCount = (req, res) => {
+  const user = getUserFromRequest(req);
+  if (!user || !user.account) {
+    return res.send({ status: 200, message: "success", data: { count: 0 } });
+  }
+
+  const countSql = "SELECT COUNT(*) AS count FROM message_notifications WHERE to_account = ? AND is_read = 0";
+  db.query(countSql, [user.account], (err, result) => {
+    if (err) return res.cc(err);
+    res.send({
+      status: 200,
+      message: "获取未读数成功",
+      data: { count: result[0]?.count || 0 },
+    });
+  });
+};
+
+// 10. 标记通知为已读
+exports.markRead = (req, res) => {
+  const user = getUserFromRequest(req);
+  if (!user || !user.account) {
+    return res.send({ status: 401, message: "请先登录" });
+  }
+
+  const { ids, all } = req.body || {};
+
+  if (all) {
+    // 全部标记已读
+    const updateSql = "UPDATE message_notifications SET is_read = 1 WHERE to_account = ? AND is_read = 0";
+    db.query(updateSql, [user.account], (err, result) => {
+      if (err) return res.cc(err);
+      res.send({
+        status: 200,
+        message: "全部标记已读成功",
+        data: { affected: result.affectedRows },
+      });
+    });
+  } else if (Array.isArray(ids) && ids.length > 0) {
+    const placeholders = ids.map(() => "?").join(",");
+    const updateSql = `UPDATE message_notifications SET is_read = 1 WHERE id IN (${placeholders}) AND to_account = ?`;
+    db.query(updateSql, [...ids, user.account], (err, result) => {
+      if (err) return res.cc(err);
+      res.send({
+        status: 200,
+        message: "标记已读成功",
+        data: { affected: result.affectedRows },
+      });
+    });
+  } else {
+    return res.send({ status: 400, message: "缺少必要参数 ids 或 all" });
+  }
 };

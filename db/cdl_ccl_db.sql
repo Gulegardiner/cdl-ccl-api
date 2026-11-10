@@ -169,7 +169,7 @@ CREATE TABLE `message_replies` (
   `message_id` int(11) NOT NULL COMMENT '所属留言ID',
   `account` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '回复人账号',
   `reply_to_account` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '被回复人账号（楼中楼）',
-  `parent_id` int(11) NOT NULL DEFAULT 0 COMMENT '父级回复ID（0为直接回复主帖）',
+  -- `parent_id` int(11) NOT NULL DEFAULT 0 COMMENT '父级回复ID（0为直接回复主帖）',
   `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '回复内容',
   `is_admin` int(1) NOT NULL DEFAULT 0 COMMENT '是否管理员回复：1是，0否',
   `status` int(1) NOT NULL DEFAULT 1 COMMENT '状态：1正常，0已删除',

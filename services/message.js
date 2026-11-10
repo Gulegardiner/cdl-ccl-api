@@ -233,7 +233,6 @@ exports.getMessageDetail = (req, res) => {
         r.message_id,
         r.account,
         r.reply_to_account,
-        r.parent_id,
         r.content,
         r.is_admin,
         r.status,
@@ -317,7 +316,7 @@ exports.createReply = (req, res) => {
     return res.send({ status: 401, message: "请先登录" });
   }
 
-  const { message_id, content, parent_id = 0, reply_to_account = null } = req.body || {};
+  const { message_id, content,  reply_to_account = null } = req.body || {};
   if (!message_id) {
     return res.send({ status: 400, message: "缺少必要参数 message_id" });
   }
@@ -347,7 +346,6 @@ exports.createReply = (req, res) => {
       message_id: Number(message_id),
       account: user.account,
       reply_to_account: reply_to_account || null,
-      parent_id: Number(parent_id) || 0,
       content: content.trim(),
       is_admin: isAdmin ? 1 : 0,
       status: 1,
